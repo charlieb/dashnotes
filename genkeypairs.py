@@ -21,10 +21,9 @@ def keypair():
 def make_qr_im(data):
     qr = qrcode.QRCode(
         #version=1,
-        #error_correction=qrcode.constants.ERROR_CORRECT_L,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=3,
-        border=4,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=6,
+        border=2,
     )
     qr.add_data(data)
     qr.make(fit=None)
@@ -94,16 +93,21 @@ def crop_marks(im, page):
 def main():
     sheet = Image.new('RGB', page_size, (255,255,255))
     #im = Image.new('RGB', (1476,768), (0,0,128))
-    im = Image.open('back.png')
-    # increase size of image to counteract overprint
-    im.resize((int(c + overprint) for c in im.size), resample=Image.LANCZOS)
+    im = Image.open('front.png')
+    barcodes = [(143,277), (1100,255)]
+
     for coord in paste_coords(im):
+        pub, priv = keypair()
+        impub = make_qr_im(pub)
+        impriv = make_qr_im(priv).resize((297,297))
+        im.paste(impub, barcodes[0])
+        im.paste(impriv, barcodes[1])
         sheet.paste(im, coord)
     crop_marks(im, sheet)
-    sheet.show()
+    #sheet.show()
     print(sheet)
     sheet.save('test.png', 'PNG')
-    sheet.save('test.pdf', 'PDF')
+    sheet.save('test.pdf', 'PDF', resolution=dpi)
     
 
 if __name__ == '__main__':
