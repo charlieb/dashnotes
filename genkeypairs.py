@@ -5,6 +5,7 @@ import sys
 from pycoin.cmds import ku
 from pycoin.key.BIP32Node import BIP32Node
 from PIL import Image, ImageDraw
+import json
 
 
 def keypair():
@@ -14,8 +15,6 @@ def keypair():
     key = BIP32Node.from_master_secret(ku.get_entropy(), 'DASH')
     pub = key.address(use_uncompressed=False)
     priv = key.wif(use_uncompressed=False)
-    print(priv)
-    print(pub)
     return pub, priv
 
 def make_qr_im(data):
@@ -92,27 +91,28 @@ def crop_marks(im, page):
 
 def main():
     sheet = Image.new('RGB', page_size, (255,255,255))
+
+    note_type = "morton_mid"
+    with open('config.json') as f:
+        cfg = json.loads(f.read())
+    cfg = cfg[note_type]
+
     #im = Image.new('RGB', (1476,768), (0,0,128))
-    im = Image.open('front.png')
-    barcodes = [(143,277), (1100,255)]
+    im = Image.open(note_type + '/front.png')
 
     for coord in paste_coords(im):
         pub, priv = keypair()
-        impub = make_qr_im(pub)
-        impriv = make_qr_im(priv).resize((297,297))
-        im.paste(impub, barcodes[0])
-        im.paste(impriv, barcodes[1])
+        impub = make_qr_im(pub).resize(cfg['pub_size'])
+        impriv = make_qr_im(priv).resize(cfg['priv_size'])
+        im.paste(impub, cfg['pub_coord'])
+        im.paste(impriv, cfg['priv_coord'])
         sheet.paste(im, coord)
     crop_marks(im, sheet)
-    #sheet.show()
-    print(sheet)
+
     sheet.save('test.png', 'PNG')
     sheet.save('test.pdf', 'PDF', resolution=dpi)
     
 
 if __name__ == '__main__':
     main()
-
-    
-
 

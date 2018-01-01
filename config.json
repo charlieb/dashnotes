@@ -1,0 +1,9 @@
+{
+  "morton_mid" : {
+    "pub_coord" : [143, 277],
+    "pub_size" : [246, 246],
+    "priv_coord" : [1100,255],
+    "priv_size" : [296, 296]
+  }
+}
+
