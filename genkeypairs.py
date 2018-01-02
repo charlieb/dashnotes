@@ -6,6 +6,9 @@ from pycoin.cmds import ku
 from pycoin.key.BIP32Node import BIP32Node
 from PIL import Image, ImageDraw
 import json
+import argparse
+from sys import stdout
+from math import ceil
 
 
 def keypair():
@@ -58,7 +61,7 @@ overprint = dpi / 16 # halfway between 1/8 and 1/16inch
 def paste_coords(im):
     '''Stacks 3 copies in in X and 4 in Y of im argument.
     Distributes leftover space between im copies.
-    Returns list of 12 (x,y) tuples for the top-left coord of eaceh copy.'''
+    Returns list of 12 (x,y) tuples for the top-left coord of each copy.'''
     (ix,iy) = im.size
     px = page_size[0]
     xcopies = int(px / ix)
@@ -88,29 +91,45 @@ def crop_marks(im, page):
         draw.line((0, y, min(xs) - overprint, y), fill=(0,0,0))
         draw.line((max(xs) + overprint, y, page.size[0], y), fill=(0,0,0))
 
+def parse_args():
+    ap = argparse.ArgumentParser(description='Generate paper wallet images output public key addresses')
+    ap.add_argument('-o', '--output', default=None, help='Output public address list to a file, otherwise print to stdout.')
+    ap.add_argument('-f', '--filename', default='wallet', help='Filename prefix for PDF and PNG files. Actual filenames will be like <filename>000001.png')
+    ap.add_argument('-s', '--style', help='The graphics to use for the wallet.', choices=['morton_mid', 'test'], required=True)
+    ap.add_argument('-q', '--quiet', action='store_true', default=False, help='Supress status messages, useful for getting just wallet addresses on stdout.')
+    ap.add_argument('number', type=int, help='The number of wallets to generate.')
+    return ap.parse_args()
 
 def main():
+    args = parse_args()
     sheet = Image.new('RGB', page_size, (255,255,255))
 
-    note_type = "morton_mid"
     with open('config.json') as f:
         cfg = json.loads(f.read())
-    cfg = cfg[note_type]
+    cfg = cfg[args.style]
 
-    #im = Image.new('RGB', (1476,768), (0,0,128))
-    im = Image.open(note_type + '/front.png')
+    im = Image.open(args.style + '/front.png')
+    coords = paste_coords(im)
+    nsheets = ceil(args.number / len(coords))
 
-    for coord in paste_coords(im):
-        pub, priv = keypair()
-        impub = make_qr_im(pub).resize(cfg['pub_size'])
-        impriv = make_qr_im(priv).resize(cfg['priv_size'])
-        im.paste(impub, cfg['pub_coord'])
-        im.paste(impriv, cfg['priv_coord'])
-        sheet.paste(im, coord)
-    crop_marks(im, sheet)
+    with open(args.output) if args.output else sys.stdout as addrfile:
+        if not args.quiet:
+            print('Generating %i sheets of %s. Saving addresses to %s and PDFs as %s'%(nsheets, args.style, args.output if args.output else 'stdout', args.filename))
 
-    sheet.save('test.png', 'PNG')
-    sheet.save('test.pdf', 'PDF', resolution=dpi)
+        for s in range(nsheets):
+            for coord in coords:
+                pub, priv = keypair()
+                print(pub, file=addrfile)
+                impub = make_qr_im(pub).resize(cfg['pub_size'])
+                impriv = make_qr_im(priv).resize(cfg['priv_size'])
+                im.paste(impub, cfg['pub_coord'])
+                im.paste(impriv, cfg['priv_coord'])
+                sheet.paste(im, coord)
+            crop_marks(im, sheet)
+
+            # TODO the backs!
+            sheet.save('%s%05i.png'%(args.filename, s), 'PNG')
+            sheet.save('%s%05i.pdf'%(args.filename, s), 'PDF', resolution=dpi)
     
 
 if __name__ == '__main__':
