@@ -9,6 +9,7 @@ import json
 import argparse
 from sys import stdout
 from math import ceil
+import subprocess as sub
 
 
 def keypair():
@@ -91,10 +92,23 @@ def crop_marks(im, page):
         draw.line((0, y, min(xs) - overprint, y), fill=(0,0,0))
         draw.line((max(xs) + overprint, y, page.size[0], y), fill=(0,0,0))
 
+def check_directory(d):
+    mounts = sub.check_output(['mount']).decode().strip().split('\n')
+    mpoint = None
+    for mount in mounts:
+        if mount.split(' ')[2] == d:
+            mpoint = mount.split(' ')[0]
+            break
+    if not mpoint: return False
+    return sub.check_output(['sudo', 'fatlabel', mpoint]).decode().strip().endswith('PRIVATE')
+
+
 def parse_args():
     ap = argparse.ArgumentParser(description='Generate paper wallet images output public key addresses')
     ap.add_argument('-o', '--output', default=None, help='Output public address list to a file, otherwise print to stdout.')
     ap.add_argument('-f', '--filename', default='wallet', help='Filename prefix for PDF and PNG files. Actual filenames will be like <filename>000001.png')
+    ap.add_argument('-d', '--directory', default='/run/media/charlieb/PRIVATE', help='Directory to write the images to - must be the root of a filesystem named PRIVATE')
+    ap.add_argument('--unsafe', action='store_true', help='Override the above directory checks')
     ap.add_argument('-s', '--style', help='The graphics to use for the wallet.', choices=['morton_mid', 'test'], required=True)
     ap.add_argument('-q', '--quiet', action='store_true', default=False, help='Supress status messages, useful for getting just wallet addresses on stdout.')
     ap.add_argument('number', type=int, help='The number of wallets to generate.')
@@ -102,17 +116,28 @@ def parse_args():
 
 def main():
     args = parse_args()
+
+    if not check_directory(args.directory):
+        if not args.quiet: print('FAILED PRIVATE filesystem label check')
+        if args.unsafe:
+            if not args.quiet: print('UNSAFE mode enabled, continuing')
+        else:
+            return
+
     sheet = Image.new('RGB', page_size, (255,255,255))
 
     with open('config.json') as f:
         cfg = json.loads(f.read())
     cfg = cfg[args.style]
 
-    im = Image.open(args.style + '/front.png')
-    coords = paste_coords(im)
+    front = Image.open(args.style + '/front.png')
+    back = Image.open(args.style + '/back.png')
+    # Note: front and back images *must* be the same size
+    coords = paste_coords(front)
     nsheets = ceil(args.number / len(coords))
+    wallet_path = args.directory + '/' + args.filename
 
-    with open(args.output) if args.output else sys.stdout as addrfile:
+    with open(args.output, 'w') if args.output else sys.stdout as addrfile:
         if not args.quiet:
             print('Generating %i sheets of %s. Saving addresses to %s and PDFs as %s'%(nsheets, args.style, args.output if args.output else 'stdout', args.filename))
 
@@ -122,14 +147,20 @@ def main():
                 print(pub, file=addrfile)
                 impub = make_qr_im(pub).resize(cfg['pub_size'])
                 impriv = make_qr_im(priv).resize(cfg['priv_size'])
-                im.paste(impub, cfg['pub_coord'])
-                im.paste(impriv, cfg['priv_coord'])
-                sheet.paste(im, coord)
-            crop_marks(im, sheet)
+                front.paste(impub, cfg['pub_coord'])
+                front.paste(impriv, cfg['priv_coord'])
+                sheet.paste(front, coord)
+            crop_marks(front, sheet)
 
-            # TODO the backs!
-            sheet.save('%s%05i.png'%(args.filename, s), 'PNG')
-            sheet.save('%s%05i.pdf'%(args.filename, s), 'PDF', resolution=dpi)
+            sheet.save('%s%05i.png'%(wallet_path, s*2), 'PNG')
+            sheet.save('%s%05i.pdf'%(wallet_path, s*2), 'PDF', resolution=dpi)
+
+            for coord in coords:
+                sheet.paste(back, coord)
+            crop_marks(back, sheet)
+
+            sheet.save('%s%05i.png'%(wallet_path, s*2+1), 'PNG')
+            sheet.save('%s%05i.pdf'%(wallet_path, s*2+1), 'PDF', resolution=dpi)
     
 
 if __name__ == '__main__':
