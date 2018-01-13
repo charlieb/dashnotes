@@ -6,6 +6,7 @@ import base64
 import PIL.Image, PIL.ImageTk
 import qrcode
 import clipboard
+import urllib.request as url
 
 req_id = 0
 def request(method, params=[]):
@@ -44,16 +45,20 @@ def send_funds(from_acct, to_addrs, amt_per_address):
     res = request('sendmany', [from_acct, reqs])
     print(res)
 
-def test():
-    with open('addresses', 'r') as addr_file:
-        to_addrs = addr_file.readlines()
+def getbalance(addr):
+    with url.urlopen('https://api.blockcypher.com/v1/dash/main/addrs/' + addr) as response:
+        addr_data = json.loads(response.read())
+    print(addr_data)
+    
 
-    send_funds('', to_addrs, 0.0002)
+def test():
+    getbalance('Xm29AommZxPX6ahLkfYTSHnsMKXCLHMDyL')
 
 #######################################
 # UI
 #######################################
 from tkinter import *
+from tkinter.font import Font
 from tkinter.ttk import * 
 from tkinter.filedialog import askopenfilename
 
@@ -105,7 +110,9 @@ class FundSender(Frame):
         self.lb_address_file.set(self.address_file)
 
         self.tv_addresses.delete(*self.tv_addresses.get_children())
+        consolas = Font(family='Consolas', size=10)
         for r in self.addresses:
+            print(consolas.measure(r.strip()))
             self.tv_addresses.insert('', END, text=r.strip())
 
     def _amt_per_address_changed(self, *_):
@@ -198,8 +205,14 @@ class FundSender(Frame):
 
         # tv_addresses
         style = Style()
-        style.configure('Treeview', font='courier')
-        self.tv_addresses = Treeview(fr, show='tree')
+        style.configure('Treeview', font=('Consolas', 10))
+        consolas = Font(family='Consolas', size=10)
+        font_w = consolas.measure('m')
+        self.tv_addresses = Treeview(fr, show='tree headings', columns=['Balance'])
+        self.tv_addresses.column('#0', width=38*font_w, anchor=W, stretch=0)
+        self.tv_addresses.heading('Balance', text='Balance')
+        self.tv_addresses.column('Balance', anchor='center')
+        self.tv_addresses.heading('#0', text='Address')
         self.tv_addresses.pack(side=LEFT, expand=True, fill='both')
 
         sb = Scrollbar(fr)
@@ -213,6 +226,7 @@ class FundSender(Frame):
 
 if __name__ == '__main__':
     #test()
+    #exit(0)
     top = FundSender()
     top.mainloop()
 
