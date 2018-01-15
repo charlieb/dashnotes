@@ -6,7 +6,7 @@ import base64
 import PIL.Image, PIL.ImageTk
 import qrcode
 import clipboard
-import urllib.request as url
+import urllib as url
 
 req_id = 0
 def request(method, params=[]):
@@ -45,11 +45,29 @@ def send_funds(from_acct, to_addrs, amt_per_address):
     res = request('sendmany', [from_acct, reqs])
     print(res)
 
-def getbalance(addr):
-    with url.urlopen('https://api.blockcypher.com/v1/dash/main/addrs/' + addr) as response:
-        addr_data = json.loads(response.read())
+def getbalance_bc(addr):
+    try:
+        with url.request.urlopen('https://api.blockcypher.com/v1/dash/main/addrs/' + addr) as response:
+            addr_data = json.loads(response.read())
+    except url.error.HTTPError as e:
+        if e.code == 400: # not found
+            addr_data = {'balance' : 0}
+        else:
+            raise
     print(addr_data)
+    return addr_data
     
+def getbalance(addr):
+    try:
+        with url.request.urlopen('https://explorer.dash.org/chain/Dash/q/addressbalance/' + addr) as response:
+            addr_data = response.read().decode()
+    except url.error.HTTPError as e:
+        if e.code == 400: # not found
+            addr_data = '0.0'
+        else:
+            raise
+    print(addr_data)
+    return addr_data
 
 def test():
     getbalance('Xm29AommZxPX6ahLkfYTSHnsMKXCLHMDyL')
@@ -84,20 +102,34 @@ class FundSender(Frame):
     def __init__(self):
         super().__init__()
         self.addresses = []
-        self.balance = 0.001
+        self.balance = 0.000
         self.address_filename = ''
         self.option_add("*Listbox.Font", "courier")
         self.pack(expand=True, fill='both')
         self._address_file_picker()
-        #self._address_list()
+        self.update_balances()
 
-    # TODO: query block explorer API
-    def check_balances(self):
-        pass 
+    def update_balances(self):
+        self.balance = float(getbalance(self.address))
+        self._amt_per_address_changed()
+        self._update_tv_addresses()
+
+    def _send_funds(self):
+        send_funds('', self.addresses, float(self.amt_per_address.get()))
 
     def _addr_to_clipboard(self):
-        print(self.addr)
-        clipboard.copy(self.addr)
+        clipboard.copy(self.address)
+
+    def _get_address_data(self):
+        self.address_data = {a : getbalance(a) for a in self.addresses}
+        print(self.address_data)
+
+    def _update_tv_addresses(self):
+        self._get_address_data()
+        for item in self.tv_addresses.get_children():
+            data = self.address_data[self.tv_addresses.item(item)['text']]
+            self.tv_addresses.item(item, values=[data])
+
 
     def _open_address_file(self):
         self.address_file = askopenfilename(initialdir='.',
@@ -105,21 +137,21 @@ class FundSender(Frame):
                 title='Choose Address File')
 
         with open(self.address_file, 'r') as addr_file:
-            self.addresses = addr_file.readlines()
+            self.addresses = [a.strip() for a in addr_file.readlines()]
 
         self.lb_address_file.set(self.address_file)
 
         self.tv_addresses.delete(*self.tv_addresses.get_children())
-        consolas = Font(family='Consolas', size=10)
         for r in self.addresses:
-            print(consolas.measure(r.strip()))
-            self.tv_addresses.insert('', END, text=r.strip())
+            self.tv_addresses.insert('', END, text=r)
+
+        self._update_tv_addresses()
 
     def _amt_per_address_changed(self, *_):
         send = float(self.amt_per_address.get()) * len(self.addresses) - self.balance
         if send < 0: send = 0
 
-        self.lb_balance.set('Balance: %0.3f\tNeeded: %0.3f\tSend %0.3f'%(
+        self.lb_balance.set('Balance: %0.5f\tNeeded: %0.5f\tSend %0.5f'%(
                              self.balance, float(self.amt_per_address.get()) * len(self.addresses),
                              send))
 
@@ -158,7 +190,7 @@ class FundSender(Frame):
         self.amt_per_address.set('0.00')
         # change event is taken care of with a trace on the textvariable setup
         # below
-        sb_amt = Spinbox(self, textvariable=self.amt_per_address, from_=0.000, to=1000, increment=0.001, width=10)
+        sb_amt = Spinbox(self, textvariable=self.amt_per_address, from_=0.000, to=1000, increment=0.001, width=10, format='%6.5f')
         sb_amt.grid(row=1, column=0, padx=5, pady=5)
         
         # ------ Dash ------
@@ -177,15 +209,16 @@ class FundSender(Frame):
         fr = Frame(self)
         fr.grid(row=3, column=0, columnspan=2)
         # TODO: generate once and load from file thereafter
-        self.addr = 'XqsjzGLmTcXZGH6aMVJ4YToQ8FnzTcEaTk'
-        self.qr_image = PIL.ImageTk.PhotoImage(make_qr_im(self.addr))
+        #self.addr = 'XqsjzGLmTcXZGH6aMVJ4YToQ8FnzTcEaTk'
+        self.address = 'XwLpYiL77cPtPfj6t9VLCCgKERSccEoaKS'
+        self.qr_image = PIL.ImageTk.PhotoImage(make_qr_im(self.address))
         im_label = Label(fr, compound=TOP, image=self.qr_image)
         im_label.image = self.qr_image
         im_label.grid(row=0, column=0, sticky=S, columnspan=2)
 
         # ------- addr -------
         self.qr = StringVar()
-        self.qr.set(split_addr(self.addr))
+        self.qr.set(split_addr(self.address))
         qr_label = Label(fr, textvariable=self.qr)
         qr_label.grid(row=1, column=0, padx=5)
 
@@ -198,10 +231,15 @@ class FundSender(Frame):
         Grid.columnconfigure(self, 1, weight=1)
         Grid.columnconfigure(self, 2, weight=1)
 
+        # ------ send
+        self.cb_send = Button(fr, text='SEND', command=self._send_funds)
+        self.cb_send.grid(row=6, column=0, columnspan=3)
+        Grid.rowconfigure(self, 6, weight=1)
+
         # ------ addresses -------
         fr = Frame(master=self)
-        fr.grid(sticky=N+E+S+W, row=6, column=0, columnspan=3)
-        Grid.rowconfigure(self, 6, weight=1)
+        fr.grid(sticky=N+E+S+W, row=7, column=0, columnspan=3)
+        Grid.rowconfigure(self, 7, weight=1)
 
         # tv_addresses
         style = Style()
@@ -211,7 +249,7 @@ class FundSender(Frame):
         self.tv_addresses = Treeview(fr, show='tree headings', columns=['Balance'])
         self.tv_addresses.column('#0', width=38*font_w, anchor=W, stretch=0)
         self.tv_addresses.heading('Balance', text='Balance')
-        self.tv_addresses.column('Balance', anchor='center')
+        self.tv_addresses.column('Balance', anchor=E)
         self.tv_addresses.heading('#0', text='Address')
         self.tv_addresses.pack(side=LEFT, expand=True, fill='both')
 
@@ -225,8 +263,7 @@ class FundSender(Frame):
         self.amt_per_address.trace('w', self._amt_per_address_changed)
 
 if __name__ == '__main__':
-    #test()
-    #exit(0)
+    test()
     top = FundSender()
     top.mainloop()
 
