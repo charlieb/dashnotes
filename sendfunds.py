@@ -8,6 +8,9 @@ import qrcode
 import clipboard
 import urllib as url
 
+from pycoin.cmds import ku
+from pycoin.key.BIP32Node import BIP32Node
+
 req_id = 0
 def request(method, params=[]):
     global req_id
@@ -72,6 +75,15 @@ def getbalance(addr):
 def test():
     getbalance('Xm29AommZxPX6ahLkfYTSHnsMKXCLHMDyL')
 
+def new_keypair():
+    # ku -n DASH create 
+    # wif = private key
+    # Dash Address = public address
+    key = BIP32Node.from_master_secret(ku.get_entropy(), 'DASH')
+    pub = key.address(use_uncompressed=False)
+    priv = key.wif(use_uncompressed=False)
+    return pub, priv
+
 #######################################
 # UI
 #######################################
@@ -79,6 +91,7 @@ from tkinter import *
 from tkinter.font import Font
 from tkinter.ttk import * 
 from tkinter.filedialog import askopenfilename
+import pickle
 
 def make_qr_im(data):
     qr = qrcode.QRCode(
@@ -96,11 +109,27 @@ def split_addr(addr):
     addr = addr[:5] + ' ' + ' '.join(addr[i:i+4] for i in range(5, len(addr)-1, 4)) + addr[-1]
     addr = addr[0:20] + '\n' + addr[21:]
     return addr
-    
 
 class FundSender(Frame):
     def __init__(self):
         super().__init__()
+        self.savefilename = 'FundSender.sav'
+        try:
+            with open(self.savefilename, 'r') as f:
+                self.address, self.privkey = (line.strip() for line in f.readlines())
+        except: #TODO only filenotfound exception
+            self.address, self.privkey = new_keypair()
+            try:
+                with open(self.savefilename, 'w') as f:
+                    f.write(self.address + '\n' + self.privkey)
+            except:
+                pass # TODO: WARN USER
+
+        print([self.address, self.privkey])
+
+        #self.addr = 'XqsjzGLmTcXZGH6aMVJ4YToQ8FnzTcEaTk'
+        #self.address = 'XwLpYiL77cPtPfj6t9VLCCgKERSccEoaKS'
+
         self.addresses = []
         self.balance = 0.000
         self.address_filename = ''
@@ -129,7 +158,6 @@ class FundSender(Frame):
         for item in self.tv_addresses.get_children():
             data = self.address_data[self.tv_addresses.item(item)['text']]
             self.tv_addresses.item(item, values=[data])
-
 
     def _open_address_file(self):
         self.address_file = askopenfilename(initialdir='.',
@@ -209,8 +237,6 @@ class FundSender(Frame):
         fr = Frame(self)
         fr.grid(row=3, column=0, columnspan=2)
         # TODO: generate once and load from file thereafter
-        #self.addr = 'XqsjzGLmTcXZGH6aMVJ4YToQ8FnzTcEaTk'
-        self.address = 'XwLpYiL77cPtPfj6t9VLCCgKERSccEoaKS'
         self.qr_image = PIL.ImageTk.PhotoImage(make_qr_im(self.address))
         im_label = Label(fr, compound=TOP, image=self.qr_image)
         im_label.image = self.qr_image
@@ -264,7 +290,13 @@ class FundSender(Frame):
 
 if __name__ == '__main__':
     test()
-    top = FundSender()
+    try:
+        with open(saved_state_filename, 'rb') as f:
+            # The protocol version used is detected automatically, so we do not
+            # have to specify it.
+            top = pickle.load(f)
+    except:
+        top = FundSender()
     top.mainloop()
 
 
