@@ -11,6 +11,9 @@ import urllib as url
 from pycoin.cmds import ku
 from pycoin.key.BIP32Node import BIP32Node
 
+import threading
+import queue
+
 req_id = 0
 def request(method, params=[]):
     global req_id
@@ -91,7 +94,6 @@ from tkinter import *
 from tkinter.font import Font
 from tkinter.ttk import * 
 from tkinter.filedialog import askopenfilename
-import pickle
 
 def make_qr_im(data):
     qr = qrcode.QRCode(
@@ -111,7 +113,7 @@ def split_addr(addr):
     return addr
 
 class FundSender(Frame):
-    def __init__(self):
+    def __init__(self, balance_queues):
         super().__init__()
         self.savefilename = 'FundSender.sav'
         try:
@@ -127,6 +129,7 @@ class FundSender(Frame):
 
         print([self.address, self.privkey])
 
+        self.balance_queues = balance_queues
         #self.addr = 'XqsjzGLmTcXZGH6aMVJ4YToQ8FnzTcEaTk'
         #self.address = 'XwLpYiL77cPtPfj6t9VLCCgKERSccEoaKS'
 
@@ -136,28 +139,45 @@ class FundSender(Frame):
         self.option_add("*Listbox.Font", "courier")
         self.pack(expand=True, fill='both')
         self._address_file_picker()
-        self.update_balances()
+
+        self.balance_queues['queries'].put(self.address)
+        self.after(5000, self.receive_balances)
+
+        self.query_sent_repeat = False
+
+    def receive_balances(self):
+        q = self.balance_queues['results']
+        print('receive_balances')
+        wait = 5000
+        while not q.empty():
+            print('checking for results')
+            bal = q.get()
+            if bal is not None:
+                if bal['address'] == self.address:
+                    self.balance = float(bal['balance'])
+                    self._amt_per_address_changed()
+                    wait = 5000 if wait == 5000 else wait
+                    self.balance_queues['queries'].put(self.address)
+                elif bal['address'] in self.addresses:
+                    self.tv_addresses.item(bal['address'], values=[bal['balance']])
+                    wait = 1000
+                q.task_done()
+
+        #if self.query_sent_repeat and self.balance_queues['queries'].empty():
+        #    self.update_balances()
+
+        self.after(wait, self.receive_balances) 
 
     def update_balances(self):
-        self.balance = float(getbalance(self.address))
-        self._amt_per_address_changed()
-        self._update_tv_addresses()
+        for addr in self.addresses:
+            self.balance_queues['queries'].put(addr)
 
     def _send_funds(self):
+        self.query_sent_repeat = True
         send_funds('', self.addresses, float(self.amt_per_address.get()))
 
     def _addr_to_clipboard(self):
         clipboard.copy(self.address)
-
-    def _get_address_data(self):
-        self.address_data = {a : getbalance(a) for a in self.addresses}
-        print(self.address_data)
-
-    def _update_tv_addresses(self):
-        self._get_address_data()
-        for item in self.tv_addresses.get_children():
-            data = self.address_data[self.tv_addresses.item(item)['text']]
-            self.tv_addresses.item(item, values=[data])
 
     def _open_address_file(self):
         self.address_file = askopenfilename(initialdir='.',
@@ -171,15 +191,15 @@ class FundSender(Frame):
 
         self.tv_addresses.delete(*self.tv_addresses.get_children())
         for r in self.addresses:
-            self.tv_addresses.insert('', END, text=r)
+            self.tv_addresses.insert('', END, text=r, iid=r)
 
-        self._update_tv_addresses()
+        self.update_balances()
 
     def _amt_per_address_changed(self, *_):
         send = float(self.amt_per_address.get()) * len(self.addresses) - self.balance
         if send < 0: send = 0
 
-        self.lb_balance.set('Balance: %0.5f\tNeeded: %0.5f\tSend %0.5f'%(
+        self.lb_balance.set('Balance: %0.7f    Needed: %0.7f    Send %0.7f'%(
                              self.balance, float(self.amt_per_address.get()) * len(self.addresses),
                              send))
 
@@ -288,16 +308,30 @@ class FundSender(Frame):
         # Some events after all variables have been initialised
         self.amt_per_address.trace('w', self._amt_per_address_changed)
 
+from time import sleep
+def remote_queries(queries, results):
+    while True:
+        address = queries.get(block=True)
+        if address == 'QUIT': return
+        balance = getbalance(address)
+        results.put({'address': address, 'balance': balance})
+        print(address, balance)
+        queries.task_done()
+
 if __name__ == '__main__':
     test()
-    try:
-        with open(saved_state_filename, 'rb') as f:
-            # The protocol version used is detected automatically, so we do not
-            # have to specify it.
-            top = pickle.load(f)
-    except:
-        top = FundSender()
+    # Start remote query thread
+    queues = {'queries': queue.Queue(), 'results': queue.Queue()}
+    query_thread = threading.Thread(target=remote_queries, kwargs=queues)
+    query_thread.start()
+
+    top = FundSender(queues)
     top.mainloop()
+
+
+    queues['queries'].put('QUIT')
+
+    query_thread.join()
 
 
 
