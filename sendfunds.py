@@ -1,8 +1,5 @@
 #!/bin/env python3
 
-import json
-import requests
-import base64
 import PIL.Image, PIL.ImageTk
 import qrcode
 import clipboard
@@ -10,58 +7,33 @@ import urllib as url
 
 from pycoin.cmds import ku
 from pycoin.key.BIP32Node import BIP32Node
+from pycoin.services import blockcypher
+from pycoin.tx import tx_utils
 
 import threading
 import queue
 
-req_id = 0
-def request(method, params=[]):
-    global req_id
-    url = "http://localhost:9998/"
-    #TODO: read out of the config file, obviously!
-    rpc_user = 'haXLL1he3CFzzEHQjhUt3OXCFnOAKTSh56i'
-    rpc_pass = 'xGN/DzVnvLDD5Cmcke0V+O4WmEoo771k68MA'
-    auth = base64.b64encode((rpc_user + ':' + rpc_pass).encode('utf8')).decode('utf8')
-    headers = {'Host': '127.0.0.1:9998',
-               'Authorization': 'Basic ' + auth,
-               'content-type': 'application/json'}
+duffs_per_dash = 10**8
 
-    body = {
-        "method": method,
-        "params": params,
-        "id": req_id,
-    }
-    body = json.dumps(body)
-    print(body)
+blockcypher_api_key = 'ee938bfdf0e949c3888b63940969e35c'
+def send_funds(from_addr, tos, wif, fee):
+    '''from_addr is a simple address in a string.
+    tos is a list of tuples of (address, amount in duffs)
+    wif is the wallet import format version of the private key for from_addr
+    fee is the fee in duffs should be 100-200 duffs at time of writing.
 
-    response = requests.post(url, data=body, headers=headers).json()
+    Amount at from_addr must = sum of amounts in tos + fee ot TX will not be valid.
+    '''
+    # Note: Requires https://github.com/charlieb/pycoin version until 
+    # https://github.com/richardkiss/pycoin/pull/265 is merged
 
-    # Each request must have a different id
-    req_id += 1
+    d = bc.BlockcypherProvider(netcode='DASH', api_key=blockcypher_api_key)
 
-    print(response)
-    return response['result']
-
-def send_funds(from_acct, to_addrs, amt_per_address):
-    balance = request('getbalance', [from_acct])
-    if len(to_addrs) * amt_per_address > balance:
-        print('Insufficient Funds: you have %f, you need %f to send %f to %d wallets'%(
-            balance, len(to_addrs) * amt_per_address, amt_per_address, len(to_addrs)))
-    reqs = {a:amt_per_address for a in to_addrs}
-    res = request('sendmany', [from_acct, reqs])
-    print(res)
-
-def getbalance_bc(addr):
-    try:
-        with url.request.urlopen('https://api.blockcypher.com/v1/dash/main/addrs/' + addr) as response:
-            addr_data = json.loads(response.read())
-    except url.error.HTTPError as e:
-        if e.code == 400: # not found
-            addr_data = {'balance' : 0}
-        else:
-            raise
-    print(addr_data)
-    return addr_data
+    spendables = d.spendables_for_address(from_addr)
+    tx = tx_utils.create_tx(tos, payables, fee=fee)
+    tx_utils.sign_tx(tx, [wif])
+    rtx = d.broadcast_tx(tx)
+    return rtx
     
 def getbalance(addr):
     try:
@@ -174,7 +146,7 @@ class FundSender(Frame):
 
     def _send_funds(self):
         self.query_sent_repeat = True
-        send_funds('', self.addresses, float(self.amt_per_address.get()))
+        send_funds(self.address, [(addr, int(float(self.amt_per_address.get() * duffs_per_dash))) for addr in self.addresses], self.privkey, self.fee)
 
     def _addr_to_clipboard(self):
         clipboard.copy(self.address)
@@ -208,17 +180,17 @@ class FundSender(Frame):
         #       0      1      2  
         #    +------+------+
         # 0  | file | open |
-        #    +------+------+
-        # 1  | amt  | Dash |
-        #    +------+------+
+        #    +---+--+------+
+        # 1  |amt| Dash    |
+        #    +---+---------+
         # 2  |bal need send|
         #    +-------------+
         #    |             |
         # 3  |      QR     |
         #    |             |
-        #    +-------------+
-        # 4  | addr    |cpy|         
-        #    |-------------+
+        #    +----+---+----+
+        # 4  |addr|cpy|priv|         
+        #    |----+---+----+
         # 5  | Addr search |
         #    +-------------+
         # 6  | Addrs list  |
@@ -227,58 +199,57 @@ class FundSender(Frame):
         self.lb_address_file = StringVar()
         self.lb_address_file.set('No Address File')
         label = Label(self, textvariable=self.lb_address_file)
-        label.grid(row=0, column=0, padx=5, pady=5)
+        label.grid(row=0, column=0)#, padx=5, pady=5)
 
         # open button
         fopen = Button(self, text='Open', command=self._open_address_file)
-        fopen.grid(sticky=W, row=0, column=1, padx=5, pady=5)
+        fopen.grid(sticky=W, row=0, column=1)#, padx=5, pady=5)
 
         # ------ amt -------
         self.amt_per_address = StringVar()
         self.amt_per_address.set('0.00')
-        # change event is taken care of with a trace on the textvariable setup
-        # below
         sb_amt = Spinbox(self, textvariable=self.amt_per_address, from_=0.000, to=1000, increment=0.001, width=10, format='%6.5f')
         sb_amt.grid(row=1, column=0, padx=5, pady=5)
         
         # ------ Dash ------
         naddrs = Label(self, text='DASH per address')
-        naddrs.grid(row=1, column=1, pady=5, sticky=W)
-
+        naddrs.grid(row=1, column=1, pady=5, sticky=W, columnspan=2)
 
         # ------ balance
         self.lb_balance = StringVar()
         self._amt_per_address_changed()
         bal = Label(self, textvariable=self.lb_balance)
-        bal.grid(row=2, column=0, padx=5, pady=5, columnspan=2)
+        bal.grid(row=2, column=0, padx=5, pady=5, columnspan=3)
 
 
         # ------ QR code -------
-        fr = Frame(self)
-        fr.grid(row=3, column=0, columnspan=2)
         # TODO: generate once and load from file thereafter
         self.qr_image = PIL.ImageTk.PhotoImage(make_qr_im(self.address))
-        im_label = Label(fr, compound=TOP, image=self.qr_image)
+        im_label = Label(self, compound=TOP, image=self.qr_image)
         im_label.image = self.qr_image
-        im_label.grid(row=0, column=0, sticky=S, columnspan=2)
+        im_label.grid(row=3, column=0, sticky=S, columnspan=3)
 
         # ------- addr -------
         self.qr = StringVar()
         self.qr.set(split_addr(self.address))
-        qr_label = Label(fr, textvariable=self.qr)
-        qr_label.grid(row=1, column=0, padx=5)
+        qr_label = Label(self, textvariable=self.qr)
+        qr_label.grid(row=4, column=0, columnspan=3)
 
         # ------ cpy ---------
-        cb_clip = Button(fr, text='Copy', width=4, command=self._addr_to_clipboard)
-        cb_clip.grid(row=1, column=1, padx=0, sticky=W)
+        cb_clip = Button(self, text='Copy', width=4, command=self._addr_to_clipboard)
+        cb_clip.grid(row=5, column=1)
         
+        # ------ Private ---------
+        #cb_clip = Button(self, text='Private\nKey', width=5, command=self._addr_to_clipboard)
+        #cb_clip.grid(row=5, column=2)
+
         # ------ all columns in place so configure them to auto-size
         Grid.columnconfigure(self, 0, weight=1)
         Grid.columnconfigure(self, 1, weight=1)
         Grid.columnconfigure(self, 2, weight=1)
 
         # ------ send
-        self.cb_send = Button(fr, text='SEND', command=self._send_funds)
+        self.cb_send = Button(self, text='SEND', command=self._send_funds)
         self.cb_send.grid(row=6, column=0, columnspan=3)
         Grid.rowconfigure(self, 6, weight=1)
 
