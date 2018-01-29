@@ -108,6 +108,7 @@ class FundSender(Tk):
         self.fee = 226
         self.address_filename = ''
         self.option_add("*Listbox.Font", "courier")
+        self._menu()
         self._address_UI_init()
         self._amt_per_address_changed()
 
@@ -190,6 +191,26 @@ class FundSender(Tk):
 
         self.lb_balance.set('Balance: %0.8f    Needed: %0.8f    Send %0.8f'%(
                              self.balance, need, send))
+
+    def nop(self):
+        pass
+
+    def _menu(self):
+        menubar = Menu(self)
+
+        filemenu = Menu(menubar, tearoff=0)
+        filemenu.add_command(label="Open", command=self.nop)
+        filemenu.add_command(label="Save", command=self.nop)
+        filemenu.add_separator()
+        filemenu.add_command(label="Exit", command=self.quit)
+        menubar.add_cascade(label="File", menu=filemenu)
+
+        addressmenu = Menu(menubar, tearoff=0)
+        addressmenu.add_command(label="Show Private Key", command=self.nop)
+        addressmenu.add_command(label="Create New", command=self.nop)
+        menubar.add_cascade(label="Address", menu=addressmenu)
+
+        self.config(menu=menubar)
 
     def _address_UI_init(self):
 
