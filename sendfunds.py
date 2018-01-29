@@ -84,7 +84,7 @@ def split_addr(addr):
     addr = addr[0:20] + '\n' + addr[21:]
     return addr
 
-class FundSender(Frame):
+class FundSender(Tk):
     def __init__(self, balance_queues):
         super().__init__()
         self.savefilename = 'FundSender.sav'
@@ -109,7 +109,7 @@ class FundSender(Frame):
         self.balance = 0.000
         self.address_filename = ''
         self.option_add("*Listbox.Font", "courier")
-        self.pack(expand=True, fill='both')
+        self._menu()
         self._address_file_picker()
 
         self.balance_queues['queries'].put(self.address)
@@ -174,6 +174,26 @@ class FundSender(Frame):
         self.lb_balance.set('Balance: %0.7f    Needed: %0.7f    Send %0.7f'%(
                              self.balance, float(self.amt_per_address.get()) * len(self.addresses),
                              send))
+
+    def nop(self):
+        pass
+
+    def _menu(self):
+        menubar = Menu(self)
+
+        filemenu = Menu(menubar, tearoff=0)
+        filemenu.add_command(label="Open", command=self.nop)
+        filemenu.add_command(label="Save", command=self.nop)
+        filemenu.add_separator()
+        filemenu.add_command(label="Exit", command=self.quit)
+        menubar.add_cascade(label="File", menu=filemenu)
+
+        addressmenu = Menu(menubar, tearoff=0)
+        addressmenu.add_command(label="Show Private Key", command=self.nop)
+        addressmenu.add_command(label="Create New", command=self.nop)
+        menubar.add_cascade(label="Address", menu=addressmenu)
+
+        self.config(menu=menubar)
 
     def _address_file_picker(self):
 
