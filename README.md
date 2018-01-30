@@ -5,6 +5,7 @@ SendFunds
 ---------
 - pacman -S python-pip tk xsel
 - pip install qrcode pillow requests clipboard pycoin
+- Requires https://github.com/charlieb/pycoin version until https://github.com/richardkiss/pycoin/pull/265 is merged
 
 Genkeypairs
 -----------

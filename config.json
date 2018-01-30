@@ -4,6 +4,34 @@
     "pub_size" : [246, 246],
     "priv_coord" : [1100,255],
     "priv_size" : [296, 296]
+  },
+
+  "jw_note" : {
+    "pub_coord" : [183, 318],
+    "pub_size" : [248, 248],
+    "priv_coord" : [1114,298],
+    "priv_size" : [295, 295]
+  },
+
+  "jw_splatter" : {
+    "pub_coord" : [183, 318],
+    "pub_size" : [248, 248],
+    "priv_coord" : [1114,298],
+    "priv_size" : [295, 295]
+  },
+
+  "jw_flower" : {
+    "pub_coord" : [183, 318],
+    "pub_size" : [248, 248],
+    "priv_coord" : [1114,298],
+    "priv_size" : [295, 295]
+  },
+
+  "jw_palimsest" : {
+    "pub_coord" : [183, 318],
+    "pub_size" : [248, 248],
+    "priv_coord" : [1114,298],
+    "priv_size" : [295, 295]
   }
 }
 
