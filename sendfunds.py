@@ -232,6 +232,21 @@ class FundSender(Tk):
         #    +-------------+
         # 6  | Addrs list  |
         #
+        # V2
+        #            0        1
+        #    +------------+--------+
+        #    | menu                |
+        #    +------------+--------+
+        #    | amt Dashper|        |
+        #  0 |            |  QR    |
+        #    | NEEDED     |addr cpy|
+        #    +------------+--------+
+        # 5  | Addr search?        |
+        #    +---------------------+
+        # 6  | Addrs list          |
+        #
+        #
+        #
         # ------ file --------
         self.lb_address_file = StringVar()
         self.lb_address_file.set('No Address File')
