@@ -16,9 +16,9 @@ import queue
 duffs_per_dash = 10**8
 
 blockcypher_api_key = 'ee938bfdf0e949c3888b63940969e35c'
-def send_funds(from_addr, tos, wif, fee):
+def send_funds(from_addr, payables, wif, fee):
     '''from_addr is a simple address in a string.
-    tos is a list of tuples of (address, amount in duffs)
+    payables is a list of tuples of (address, amount in duffs)
     wif is the wallet import format version of the private key for from_addr
     fee is the fee in duffs should be 100-200 duffs at time of writing.
 
@@ -27,12 +27,12 @@ def send_funds(from_addr, tos, wif, fee):
     # Note: Requires https://github.com/charlieb/pycoin version until 
     # https://github.com/richardkiss/pycoin/pull/265 is merged
 
-    d = bc.BlockcypherProvider(netcode='DASH', api_key=blockcypher_api_key)
+    bc = blockcypher.BlockcypherProvider(netcode='DASH', api_key=blockcypher_api_key)
 
-    spendables = d.spendables_for_address(from_addr)
-    tx = tx_utils.create_tx(tos, payables, fee=fee)
+    spendables = bc.spendables_for_address(from_addr)
+    tx = tx_utils.create_tx(spendables, payables, fee=fee)
     tx_utils.sign_tx(tx, [wif])
-    rtx = d.broadcast_tx(tx)
+    rtx = bc.broadcast_tx(tx)
     return rtx
     
 def getbalance(addr):
@@ -44,11 +44,8 @@ def getbalance(addr):
             addr_data = '0.0'
         else:
             raise
-    print(addr_data)
+    #print(addr_data)
     return addr_data
-
-def test():
-    getbalance('Xm29AommZxPX6ahLkfYTSHnsMKXCLHMDyL')
 
 def new_keypair():
     # ku -n DASH create 
@@ -84,9 +81,10 @@ def split_addr(addr):
     addr = addr[0:20] + '\n' + addr[21:]
     return addr
 
-class FundSender(Frame):
+class FundSender(Tk):
     def __init__(self, balance_queues):
         super().__init__()
+        self.title('Send to DashNotes')
         self.savefilename = 'FundSender.sav'
         try:
             with open(self.savefilename, 'r') as f:
@@ -99,7 +97,7 @@ class FundSender(Frame):
             except:
                 pass # TODO: WARN USER
 
-        print([self.address, self.privkey])
+        #print([self.address, self.privkey])
 
         self.balance_queues = balance_queues
         #self.addr = 'XqsjzGLmTcXZGH6aMVJ4YToQ8FnzTcEaTk'
@@ -107,54 +105,72 @@ class FundSender(Frame):
 
         self.addresses = []
         self.balance = 0.000
+        self.fee = 226
         self.address_filename = ''
         self.option_add("*Listbox.Font", "courier")
-        self.pack(expand=True, fill='both')
-        self._address_file_picker()
+        self._address_UI_init()
+        self._amt_per_address_changed()
 
-        self.balance_queues['queries'].put(self.address)
-        self.after(5000, self.receive_balances)
+        self.update_balances_completed = True
+        self.update_balances_loop()
+        self.receive_balances_loop()
 
         self.query_sent_repeat = False
 
-    def receive_balances(self):
+    def receive_balances_loop(self):
         q = self.balance_queues['results']
-        print('receive_balances')
-        wait = 5000
         while not q.empty():
-            print('checking for results')
             bal = q.get()
             if bal is not None:
                 if bal['address'] == self.address:
                     self.balance = float(bal['balance'])
                     self._amt_per_address_changed()
-                    wait = 5000 if wait == 5000 else wait
-                    self.balance_queues['queries'].put(self.address)
                 elif bal['address'] in self.addresses:
                     self.tv_addresses.item(bal['address'], values=[bal['balance']])
-                    wait = 1000
                 q.task_done()
 
-        #if self.query_sent_repeat and self.balance_queues['queries'].empty():
-        #    self.update_balances()
+        # wait 0.5 secs
+        self.after(500, self.receive_balances_loop) 
 
-        self.after(wait, self.receive_balances) 
-
-    def update_balances(self):
+    def update_balances_now(self):
         for addr in self.addresses:
             self.balance_queues['queries'].put(addr)
+        self.balance_queues['queries'].put(self.address)
+        self.update_balances_completed = False
+
+    def update_balances_loop(self):
+        if self.balance_queues['queries'].empty():
+            if self.update_balances_completed:
+                for addr in self.addresses:
+                    self.balance_queues['queries'].put(addr)
+                self.balance_queues['queries'].put(self.address)
+                # update_balances_completed causes there to be 
+                # an extra wait before queuing all the address
+                # queries again. This means that we are not continuously
+                # quertying for updated balances 
+                self.update_balances_completed = False
+            else:
+                self.update_balances_completed = True
+        
+        # always wait 5 seconds before thinking about requeueing
+        self.after(5000, self.update_balances_loop) 
 
     def _send_funds(self):
         self.query_sent_repeat = True
-        send_funds(self.address, [(addr, int(float(self.amt_per_address.get() * duffs_per_dash))) for addr in self.addresses], self.privkey, self.fee)
+        send_funds(self.address, [(addr, int(float(self.amt_per_address.get()) * duffs_per_dash)) for addr in self.addresses], self.privkey, self.fee)
+        self.update_balances_now()
 
     def _addr_to_clipboard(self):
         clipboard.copy(self.address)
 
     def _open_address_file(self):
-        self.address_file = askopenfilename(initialdir='.',
+        address_file = askopenfilename(initialdir='.',
                 filetypes=(('Address File', '*.adr'), ('All Files', '*')),
                 title='Choose Address File')
+
+        if address_file == '': return
+
+        self.address_file = address_file
 
         with open(self.address_file, 'r') as addr_file:
             self.addresses = [a.strip() for a in addr_file.readlines()]
@@ -165,17 +181,17 @@ class FundSender(Frame):
         for r in self.addresses:
             self.tv_addresses.insert('', END, text=r, iid=r)
 
-        self.update_balances()
+        self.update_balances_now()
 
     def _amt_per_address_changed(self, *_):
-        send = float(self.amt_per_address.get()) * len(self.addresses) - self.balance
+        need = float(self.amt_per_address.get()) * len(self.addresses) + float(self.fee) / float(duffs_per_dash)
+        send = need - self.balance
         if send < 0: send = 0
 
-        self.lb_balance.set('Balance: %0.7f    Needed: %0.7f    Send %0.7f'%(
-                             self.balance, float(self.amt_per_address.get()) * len(self.addresses),
-                             send))
+        self.lb_balance.set('Balance: %0.8f    Needed: %0.8f    Send %0.8f'%(
+                             self.balance, need, send))
 
-    def _address_file_picker(self):
+    def _address_UI_init(self):
 
         #       0      1      2  
         #    +------+------+
@@ -223,9 +239,8 @@ class FundSender(Frame):
 
 
         # ------ QR code -------
-        # TODO: generate once and load from file thereafter
         self.qr_image = PIL.ImageTk.PhotoImage(make_qr_im(self.address))
-        im_label = Label(self, compound=TOP, image=self.qr_image)
+        im_label = Label(self, compound=BOTTOM, image=self.qr_image)
         im_label.image = self.qr_image
         im_label.grid(row=3, column=0, sticky=S, columnspan=3)
 
@@ -233,7 +248,7 @@ class FundSender(Frame):
         self.qr = StringVar()
         self.qr.set(split_addr(self.address))
         qr_label = Label(self, textvariable=self.qr)
-        qr_label.grid(row=4, column=0, columnspan=3)
+        qr_label.grid(row=4, column=0, sticky=N, columnspan=3)
 
         # ------ cpy ---------
         cb_clip = Button(self, text='Copy', width=4, command=self._addr_to_clipboard)
@@ -290,7 +305,6 @@ def remote_queries(queries, results):
         queries.task_done()
 
 if __name__ == '__main__':
-    test()
     # Start remote query thread
     queues = {'queries': queue.Queue(), 'results': queue.Queue()}
     query_thread = threading.Thread(target=remote_queries, kwargs=queues)
