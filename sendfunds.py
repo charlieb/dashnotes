@@ -14,8 +14,13 @@ import threading
 import queue
 
 duffs_per_dash = 10**8
-def duff2dash(d): return float(d) / float(duffs_per_dash)
+def duff2dash(d): return float(d) / float(duffs_per_dash) # use only for display in UI
 def dash2duff(d): return int(d * duffs_per_dash)
+def strdash2duff(s): 
+    nums = s.split('.')
+    units, decim = nums + ([] if len(nums) > 1 else ['0'])
+    duffs = dash2duff(int(units)) + int((decim + '0'*8)[:8])
+    return duffs
 
 blockcypher_api_key = 'ee938bfdf0e949c3888b63940969e35c'
 def send_funds(from_addr, payables, wif, fee):
@@ -47,7 +52,7 @@ def getbalance(addr):
         else:
             raise
     #print(addr_data)
-    return addr_data
+    return strdash2duff(addr_data)
 
 def new_keypair():
     # ku -n DASH create 
@@ -108,7 +113,7 @@ class FundSender(Tk):
         self.addresses = []
         self.balance = 0.000
         self.fee = 226
-        self.address_filename = ''
+        self.address_file = ''
         self.option_add("*Listbox.Font", "courier")
         self._menu()
         self._address_UI_init()
@@ -117,18 +122,16 @@ class FundSender(Tk):
         self.update_balances_loop()
         self.receive_balances_loop()
 
-        self.query_sent_repeat = False
-
     def receive_balances_loop(self):
         q = self.balance_queues['results']
         while not q.empty():
             bal = q.get()
             if bal is not None:
                 if bal['address'] == self.address:
-                    self.balance = float(bal['balance'])
+                    self.balance = bal['balance']
                     self._amt_per_address_changed()
                 elif bal['address'] in self.addresses:
-                    self.tv_addresses.item(bal['address'], values=[bal['balance']])
+                    self.tv_addresses.item(bal['address'], values=[str(duff2dash(bal['balance']))])
                 q.task_done()
 
         # wait 0.5 secs
@@ -158,8 +161,7 @@ class FundSender(Tk):
         self.after(5000, self.update_balances_loop) 
 
     def _send_funds(self):
-        self.query_sent_repeat = True
-        send_funds(self.address, [(addr, int(float(self.amt_per_address.get()) * duffs_per_dash)) for addr in self.addresses], self.privkey, self.fee)
+        send_funds(self.address, [(addr, strdash2duff(self.amt_per_address.get())) for addr in self.addresses], self.privkey, self.fee)
         self.update_balances_now()
 
     def _addr_to_clipboard(self):
@@ -177,8 +179,6 @@ class FundSender(Tk):
         with open(self.address_file, 'r') as addr_file:
             self.addresses = [a.strip() for a in addr_file.readlines()]
 
-        self.lb_address_file.set(self.address_file)
-
         self.tv_addresses.delete(*self.tv_addresses.get_children())
         for r in self.addresses:
             self.tv_addresses.insert('', END, text=r, iid=r)
@@ -186,11 +186,12 @@ class FundSender(Tk):
         self.update_balances_now()
 
     def _amt_per_address_changed(self, *_):
-        total = float(self.amt_per_address.get()) * len(self.addresses) + float(self.fee) / float(duffs_per_dash)
+        # calculate fee
+        total = strdash2duff(self.amt_per_address.get()) * len(self.addresses) + self.fee
         need = total - self.balance
         if need < 0: need = 0
 
-        self.lb_balance.set('    %0.8f Dash'%self.balance)
+        self.lb_balance.set('    %0.8f Dash'%duff2dash(self.balance))
         self.lb_needed.set( '    %0.8f Dash'%duff2dash(need))
 
     def nop(self):
@@ -214,37 +215,19 @@ class FundSender(Tk):
         self.config(menu=menubar)
 
     def _address_UI_init(self):
-        #       0      1      2  
-        #    +------+------+
-        # 0  | file | open |
-        #    +---+--+------+
-        # 1  |amt| Dash    |
-        #    +---+---------+
-        # 2  |bal need send|
-        #    +-------------+
-        #    |             |
-        # 3  |      QR     |
-        #    |             |
-        #    +----+---+----+
-        # 4  |addr|cpy|priv|         
-        #    |----+---+----+
-        # 5  | Addr search |
-        #    +-------------+
-        # 6  | Addrs list  |
-        #
-        # V2
         #            0        1
         #    +------------+--------+
         #    | menu                |
         #    +------------+--------+
-        #  0 | amt Dashper|        |
-        #  1 | balance    |  QR    |
-        #  2 | NEEDED     |        |
-        #  3 |    SEND    |addr cpy|
+        #    | amt Dashper|        |
+        #  0 | balance    |  QR    |
+        #    | NEEDED     |addr cpy|
         #    +------------+--------+
-        #  3 | Addr search?        |
+        #  1 |         SEND        |
         #    +---------------------+
-        #  4 | Addrs list          |
+        #  2 | Addr search?        |
+        #    +---------------------+
+        #  3 | Addrs list          |
         #
         #
         #
@@ -267,7 +250,6 @@ class FundSender(Tk):
         Label(ds_frame, textvariable=self.lb_needed).grid(row=2, column=1)
 
         self._amt_per_address_changed()
-        print(self.lb_needed.get())
 
         ds_frame.grid(row=0, column=0)
 
@@ -289,29 +271,11 @@ class FundSender(Tk):
         qr_frame.grid(row=0, column=1)
 
         # ------ send
-        Button(self, text='SEND', command=self._send_funds).grid(row=6, column=0, columnspan=3)
+        Button(self, text='SEND', command=self._send_funds).grid(row=1, column=0, columnspan=2, pady=5)
         
-        # ------ Private ---------
-        #cb_clip = Button(self, text='Private\nKey', width=5, command=self._addr_to_clipboard)
-        #cb_clip.grid(row=5, column=2)
-
-        # ------ all columns in place so configure them to auto-size
-        Grid.columnconfigure(self, 0, weight=1)
-        Grid.columnconfigure(self, 1, weight=1)
-        Grid.columnconfigure(self, 2, weight=1)
-
-        Grid.rowconfigure(self, 0, weight=1)
-        Grid.rowconfigure(self, 1, weight=1)
-        Grid.rowconfigure(self, 2, weight=1)
-        Grid.rowconfigure(self, 4, weight=1)
-
-        return
-
-
         # ------ addresses -------
         fr = Frame(master=self)
-        fr.grid(sticky=N+E+S+W, row=7, column=0, columnspan=3)
-        Grid.rowconfigure(self, 7, weight=1)
+        fr.grid(sticky=N+E+S+W, row=2, column=0, columnspan=2)
 
         # tv_addresses
         style = Style()
@@ -330,6 +294,15 @@ class FundSender(Tk):
 
         self.tv_addresses.config(yscrollcommand=sb.set)
         sb.config(command=self.tv_addresses.yview)
+
+        # ------ all columns in place so configure them to auto-size
+        Grid.columnconfigure(self, 0, weight=1)
+        Grid.columnconfigure(self, 1, weight=1)
+
+        Grid.rowconfigure(self, 0, weight=1)
+        Grid.rowconfigure(self, 1, weight=1)
+        Grid.rowconfigure(self, 2, weight=1)
+        Grid.rowconfigure(self, 4, weight=1)
 
         # Some events after all variables have been initialised
         self.amt_per_address.trace('w', self._amt_per_address_changed)
