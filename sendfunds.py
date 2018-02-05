@@ -113,7 +113,6 @@ class FundSender(Tk):
         self._menu()
         self._address_UI_init()
         self._amt_per_address_changed()
-
         self.update_balances_completed = True
         self.update_balances_loop()
         self.receive_balances_loop()
@@ -215,7 +214,6 @@ class FundSender(Tk):
         self.config(menu=menubar)
 
     def _address_UI_init(self):
-
         #       0      1      2  
         #    +------+------+
         # 0  | file | open |
