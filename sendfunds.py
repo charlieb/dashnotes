@@ -14,6 +14,13 @@ import threading
 import queue
 
 duffs_per_dash = 10**8
+def duff2dash(d): return float(d) / float(duffs_per_dash) # use only for display in UI
+def dash2duff(d): return int(d * duffs_per_dash)
+def strdash2duff(s): 
+    nums = s.split('.')
+    units, decim = nums + ([] if len(nums) > 1 else ['0'])
+    duffs = dash2duff(int(units)) + int((decim + '0'*8)[:8])
+    return duffs
 
 blockcypher_api_key = 'ee938bfdf0e949c3888b63940969e35c'
 def send_funds(from_addr, payables, wif, fee):
@@ -45,7 +52,7 @@ def getbalance(addr):
         else:
             raise
     #print(addr_data)
-    return addr_data
+    return strdash2duff(addr_data)
 
 def new_keypair():
     # ku -n DASH create 
@@ -106,16 +113,14 @@ class FundSender(Tk):
         self.addresses = []
         self.balance = 0.000
         self.fee = 226
-        self.address_filename = ''
+        self.address_file = ''
         self.option_add("*Listbox.Font", "courier")
+        self._menu()
         self._address_UI_init()
         self._amt_per_address_changed()
-
         self.update_balances_completed = True
         self.update_balances_loop()
         self.receive_balances_loop()
-
-        self.query_sent_repeat = False
 
     def receive_balances_loop(self):
         q = self.balance_queues['results']
@@ -123,10 +128,10 @@ class FundSender(Tk):
             bal = q.get()
             if bal is not None:
                 if bal['address'] == self.address:
-                    self.balance = float(bal['balance'])
+                    self.balance = bal['balance']
                     self._amt_per_address_changed()
                 elif bal['address'] in self.addresses:
-                    self.tv_addresses.item(bal['address'], values=[bal['balance']])
+                    self.tv_addresses.item(bal['address'], values=[str(duff2dash(bal['balance']))])
                 q.task_done()
 
         # wait 0.5 secs
@@ -156,8 +161,7 @@ class FundSender(Tk):
         self.after(5000, self.update_balances_loop) 
 
     def _send_funds(self):
-        self.query_sent_repeat = True
-        send_funds(self.address, [(addr, int(float(self.amt_per_address.get()) * duffs_per_dash)) for addr in self.addresses], self.privkey, self.fee)
+        send_funds(self.address, [(addr, strdash2duff(self.amt_per_address.get())) for addr in self.addresses], self.privkey, self.fee)
         self.update_balances_now()
 
     def _addr_to_clipboard(self):
@@ -175,8 +179,6 @@ class FundSender(Tk):
         with open(self.address_file, 'r') as addr_file:
             self.addresses = [a.strip() for a in addr_file.readlines()]
 
-        self.lb_address_file.set(self.address_file)
-
         self.tv_addresses.delete(*self.tv_addresses.get_children())
         for r in self.addresses:
             self.tv_addresses.insert('', END, text=r, iid=r)
@@ -184,94 +186,96 @@ class FundSender(Tk):
         self.update_balances_now()
 
     def _amt_per_address_changed(self, *_):
-        need = float(self.amt_per_address.get()) * len(self.addresses) + float(self.fee) / float(duffs_per_dash)
-        send = need - self.balance
-        if send < 0: send = 0
+        # calculate fee
+        total = strdash2duff(self.amt_per_address.get()) * len(self.addresses) + self.fee
+        need = total - self.balance
+        if need < 0: need = 0
 
-        self.lb_balance.set('Balance: %0.8f    Needed: %0.8f    Send %0.8f'%(
-                             self.balance, need, send))
+        self.lb_balance.set('    %0.8f Dash'%duff2dash(self.balance))
+        self.lb_needed.set( '    %0.8f Dash'%duff2dash(need))
+
+    def nop(self):
+        pass
+
+    def _menu(self):
+        menubar = Menu(self)
+
+        filemenu = Menu(menubar, tearoff=0)
+        filemenu.add_command(label="Open", command=self._open_address_file)
+        filemenu.add_command(label="Save", command=self.nop)
+        filemenu.add_separator()
+        filemenu.add_command(label="Exit", command=self.quit)
+        menubar.add_cascade(label="File", menu=filemenu)
+
+        addressmenu = Menu(menubar, tearoff=0)
+        addressmenu.add_command(label="Show Private Key", command=self.nop)
+        addressmenu.add_command(label="Create New", command=self.nop)
+        menubar.add_cascade(label="Address", menu=addressmenu)
+
+        self.config(menu=menubar)
 
     def _address_UI_init(self):
-
-        #       0      1      2  
-        #    +------+------+
-        # 0  | file | open |
-        #    +---+--+------+
-        # 1  |amt| Dash    |
-        #    +---+---------+
-        # 2  |bal need send|
-        #    +-------------+
-        #    |             |
-        # 3  |      QR     |
-        #    |             |
-        #    +----+---+----+
-        # 4  |addr|cpy|priv|         
-        #    |----+---+----+
-        # 5  | Addr search |
-        #    +-------------+
-        # 6  | Addrs list  |
+        #            0        1
+        #    +------------+--------+
+        #    | menu                |
+        #    +------------+--------+
+        #    | amt Dashper|        |
+        #  0 | balance    |  QR    |
+        #    | NEEDED     |addr cpy|
+        #    +------------+--------+
+        #  1 |         SEND        |
+        #    +---------------------+
+        #  2 | Addr search?        |
+        #    +---------------------+
+        #  3 | Addrs list          |
         #
-        # ------ file --------
-        self.lb_address_file = StringVar()
-        self.lb_address_file.set('No Address File')
-        label = Label(self, textvariable=self.lb_address_file)
-        label.grid(row=0, column=0)#, padx=5, pady=5)
+        #
+        #
 
-        # open button
-        fopen = Button(self, text='Open', command=self._open_address_file)
-        fopen.grid(sticky=W, row=0, column=1)#, padx=5, pady=5)
-
-        # ------ amt -------
+        # ====== Dash to send =======
+        ds_frame = Frame(self)
+        ## ------ amt -------
+        Label(ds_frame, text='DASH per address:').grid(row=0, column=0)
         self.amt_per_address = StringVar()
         self.amt_per_address.set('0.00')
-        sb_amt = Spinbox(self, textvariable=self.amt_per_address, from_=0.000, to=1000, increment=0.001, width=10, format='%6.5f')
-        sb_amt.grid(row=1, column=0, padx=5, pady=5)
-        
-        # ------ Dash ------
-        naddrs = Label(self, text='DASH per address')
-        naddrs.grid(row=1, column=1, pady=5, sticky=W, columnspan=2)
+        Spinbox(ds_frame, textvariable=self.amt_per_address, from_=0.000, to=1000, increment=0.001, width=10, format='%6.8f').grid(row=0, column=1)
 
-        # ------ balance
+        ## ------ balance
         self.lb_balance = StringVar()
+        Label(ds_frame, text='Current Balance:').grid(row=1, column=0)
+        Label(ds_frame, textvariable=self.lb_balance).grid(row=1, column=1)
+
+        self.lb_needed = StringVar()
+        Label(ds_frame, text='DASH needed:').grid(row=2, column=0)
+        Label(ds_frame, textvariable=self.lb_needed).grid(row=2, column=1)
+
         self._amt_per_address_changed()
-        bal = Label(self, textvariable=self.lb_balance)
-        bal.grid(row=2, column=0, padx=5, pady=5, columnspan=3)
 
+        ds_frame.grid(row=0, column=0)
 
-        # ------ QR code -------
+        # ====== QR code =======
+        qr_frame = Frame(self)
         self.qr_image = PIL.ImageTk.PhotoImage(make_qr_im(self.address))
-        im_label = Label(self, compound=BOTTOM, image=self.qr_image)
+        im_label = Label(qr_frame, compound=BOTTOM, image=self.qr_image)
         im_label.image = self.qr_image
-        im_label.grid(row=3, column=0, sticky=S, columnspan=3)
+        im_label.grid(row=0, column=0, columnspan=3)
 
-        # ------- addr -------
+        ## ------- addr -------
         self.qr = StringVar()
         self.qr.set(split_addr(self.address))
-        qr_label = Label(self, textvariable=self.qr)
-        qr_label.grid(row=4, column=0, sticky=N, columnspan=3)
+        qr_label = Label(qr_frame, textvariable=self.qr)
+        qr_label.grid(row=1, column=0, columnspan=2)
 
-        # ------ cpy ---------
-        cb_clip = Button(self, text='Copy', width=4, command=self._addr_to_clipboard)
-        cb_clip.grid(row=5, column=1)
-        
-        # ------ Private ---------
-        #cb_clip = Button(self, text='Private\nKey', width=5, command=self._addr_to_clipboard)
-        #cb_clip.grid(row=5, column=2)
-
-        # ------ all columns in place so configure them to auto-size
-        Grid.columnconfigure(self, 0, weight=1)
-        Grid.columnconfigure(self, 1, weight=1)
-        Grid.columnconfigure(self, 2, weight=1)
+        ## ------ cpy ---------
+        Button(qr_frame, text='Copy', width=4, command=self._addr_to_clipboard).grid(row=1, column=2, padx=5)
+        qr_frame.grid(row=0, column=1)
 
         # ------ send
-        self.cb_send = Button(self, text='SEND', command=self._send_funds)
-        self.cb_send.grid(row=6, column=0, columnspan=3)
-        Grid.rowconfigure(self, 6, weight=1)
-
+        Button(self, text='SEND', command=self._send_funds).grid(row=1, column=0, columnspan=2, pady=5)
+        
         # ------ addresses -------
         fr = Frame(master=self)
-        fr.grid(sticky=N+E+S+W, row=7, column=0, columnspan=3)
-        Grid.rowconfigure(self, 7, weight=1)
+        fr.grid(sticky=N+E+S+W, row=2, column=0, columnspan=2)
 
         # tv_addresses
         style = Style()
@@ -290,6 +294,15 @@ class FundSender(Tk):
 
         self.tv_addresses.config(yscrollcommand=sb.set)
         sb.config(command=self.tv_addresses.yview)
+
+        # ------ all columns in place so configure them to auto-size
+        Grid.columnconfigure(self, 0, weight=1)
+        Grid.columnconfigure(self, 1, weight=1)
+
+        Grid.rowconfigure(self, 0, weight=1)
+        Grid.rowconfigure(self, 1, weight=1)
+        Grid.rowconfigure(self, 2, weight=1)
+        Grid.rowconfigure(self, 4, weight=1)
 
         # Some events after all variables have been initialised
         self.amt_per_address.trace('w', self._amt_per_address_changed)
