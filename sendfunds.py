@@ -193,6 +193,9 @@ class FundSender(Tk):
 
         self.lb_balance.set('    %0.8f Dash'%duff2dash(self.balance))
         self.lb_needed.set( '    %0.8f Dash'%duff2dash(need))
+        self.needed_style.configure('BW.TLabel', foreground='red' if need > 0 else 'green')
+        self.cb_send.config(state=DISABLED if need > 0 else NORMAL)
+
 
     def nop(self):
         pass
@@ -244,12 +247,13 @@ class FundSender(Tk):
         self.lb_balance = StringVar()
         Label(ds_frame, text='Current Balance:').grid(row=1, column=0)
         Label(ds_frame, textvariable=self.lb_balance).grid(row=1, column=1)
-
+        
+        self.needed_style = Style()
+        self.needed_style.configure('BW.TLabel', foreground='green')
         self.lb_needed = StringVar()
         Label(ds_frame, text='DASH needed:').grid(row=2, column=0)
-        Label(ds_frame, textvariable=self.lb_needed).grid(row=2, column=1)
+        Label(ds_frame, textvariable=self.lb_needed, style='BW.TLabel').grid(row=2, column=1)
 
-        self._amt_per_address_changed()
 
         ds_frame.grid(row=0, column=0)
 
@@ -271,7 +275,14 @@ class FundSender(Tk):
         qr_frame.grid(row=0, column=1)
 
         # ------ send
-        Button(self, text='SEND', command=self._send_funds).grid(row=1, column=0, columnspan=2, pady=5)
+        self.needed_style = Style()
+        self.needed_style.configure('C.TButton', font = ('Sans', '10', 'bold'))
+        self.cb_send = Button(self, text='SEND', style='C.TButton', command=self._send_funds)
+        self.cb_send.grid(row=1, column=0, columnspan=2, pady=5)
+        self.cb_send.config(state=DISABLED)
+
+
+        self._amt_per_address_changed()
         
         # ------ addresses -------
         fr = Frame(master=self)
