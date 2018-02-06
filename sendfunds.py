@@ -161,7 +161,10 @@ class FundSender(Tk):
         self.after(5000, self.update_balances_loop) 
 
     def _send_funds(self):
-        send_funds(self.address, [(addr, strdash2duff(self.amt_per_address.get())) for addr in self.addresses], self.privkey, self.fee)
+        left = self.balance - strdash2duff(self.amt_per_address.get()) * len(self.addresses) - self.fee 
+        addr_amts = [(addr, strdash2duff(self.amt_per_address.get())) for addr in self.addresses]
+        addr_amts.append((self.address, left))
+        send_funds(self.address, addr_amts, self.privkey, self.fee)
         self.update_balances_now()
 
     def _addr_to_clipboard(self):
