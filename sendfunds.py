@@ -23,24 +23,25 @@ def strdash2duff(s):
     return duffs
 
 blockcypher_api_key = 'ee938bfdf0e949c3888b63940969e35c'
-def send_funds(from_addr, payables, wif, fee):
+def send_funds(from_addr, payables, wif):
     '''from_addr is a simple address in a string.
     payables is a list of tuples of (address, amount in duffs)
-    wif is the wallet import format version of the private key for from_addr
-    fee is the fee in duffs should be 100-200 duffs at time of writing.
+    wif is the wallet import format version of the private key for from_addr'''
 
-    Amount at from_addr must = sum of amounts in tos + fee ot TX will not be valid.
-    '''
     # Note: Requires https://github.com/charlieb/pycoin version until 
     # https://github.com/richardkiss/pycoin/pull/265 is merged
-
     bc = blockcypher.BlockcypherProvider(netcode='DASH', api_key=blockcypher_api_key)
 
     spendables = bc.spendables_for_address(from_addr)
-    tx = tx_utils.create_tx(spendables, payables, fee=fee)
+    tx = tx_utils.create_tx(spendables, payables, fee=0)
     tx_utils.sign_tx(tx, [wif])
     rtx = bc.broadcast_tx(tx)
-    return rtx
+    return tx
+
+def calc_fee(tx):
+    fee_per_kb = 1000
+    min_fee = 226
+    return max(min_fee, len(tx.as_hex()))
     
 def getbalance(addr):
     try:
@@ -70,6 +71,7 @@ from tkinter import *
 from tkinter.font import Font
 from tkinter.ttk import * 
 from tkinter.filedialog import askopenfilename
+from tkinter.messagebox import showwarning
 
 def make_qr_im(data):
     qr = qrcode.QRCode(
@@ -115,9 +117,9 @@ class FundSender(Tk):
         self.fee = 226
         self.address_file = ''
         self.option_add("*Listbox.Font", "courier")
-        self._menu()
-        self._address_UI_init()
-        self._amt_per_address_changed()
+        self.menu_init()
+        self.address_UI_init()
+        self.amt_per_address_changed()
         self.update_balances_completed = True
         self.update_balances_loop()
         self.receive_balances_loop()
@@ -129,9 +131,9 @@ class FundSender(Tk):
             if bal is not None:
                 if bal['address'] == self.address:
                     self.balance = bal['balance']
-                    self._amt_per_address_changed()
+                    self.amt_per_address_changed()
                 elif bal['address'] in self.addresses:
-                    self.tv_addresses.item(bal['address'], values=[str(duff2dash(bal['balance']))])
+                    self.tv_addresses.item(bal['address'], values=["%0.8f"%duff2dash(bal['balance'])])
                 q.task_done()
 
         # wait 0.5 secs
@@ -160,17 +162,10 @@ class FundSender(Tk):
         # always wait 5 seconds before thinking about requeueing
         self.after(5000, self.update_balances_loop) 
 
-    def _send_funds(self):
-        left = self.balance - strdash2duff(self.amt_per_address.get()) * len(self.addresses) - self.fee 
-        addr_amts = [(addr, strdash2duff(self.amt_per_address.get())) for addr in self.addresses]
-        addr_amts.append((self.address, left))
-        send_funds(self.address, addr_amts, self.privkey, self.fee)
-        self.update_balances_now()
-
-    def _addr_to_clipboard(self):
+    def address_to_clipboard(self):
         clipboard.copy(self.address)
 
-    def _open_address_file(self):
+    def open_address_file(self):
         address_file = askopenfilename(initialdir='.',
                 filetypes=(('Address File', '*.adr'), ('All Files', '*')),
                 title='Choose Address File')
@@ -186,11 +181,30 @@ class FundSender(Tk):
         for r in self.addresses:
             self.tv_addresses.insert('', END, text=r, iid=r)
 
+        # Fee only changes with number of outputs. This is the only place where
+        # that can change
+        self.recalc_fee()
         self.update_balances_now()
 
-    def _amt_per_address_changed(self, *_):
-        # calculate fee
+    def recalc_fee(self):
+        inputs = 1 # one input
+        tx_size = inputs * 180 + (len(self.addresses) + 1) * 32 + 10 + inputs
+        # fee_per_kb = 1000 # so size is fee: 1duff / byte
+        self.fee = tx_size
+        print(self.fee)
+
+    def send(self):
+        if len(self.addresses) == 0: return None
+        left = self.balance - strdash2duff(self.amt_per_address.get()) * len(self.addresses) - self.fee 
+        addr_amts = [(addr, strdash2duff(self.amt_per_address.get())) for addr in self.addresses]
+        addr_amts.append((self.address, left if left > 0 else 0))
+        txid = send_funds(self.address, addr_amts, self.privkey)
+        print(txid)
+        self.update_balances_now()
+
+    def amt_per_address_changed(self, *_):
         total = strdash2duff(self.amt_per_address.get()) * len(self.addresses) + self.fee
+
         need = total - self.balance
         if need < 0: need = 0
 
@@ -201,13 +215,13 @@ class FundSender(Tk):
 
 
     def nop(self):
-        pass
+        showwarning('Not implemented', 'Sorry that functionality is not yet implemented')
 
-    def _menu(self):
+    def menu_init(self):
         menubar = Menu(self)
 
         filemenu = Menu(menubar, tearoff=0)
-        filemenu.add_command(label="Open", command=self._open_address_file)
+        filemenu.add_command(label="Open", command=self.open_address_file)
         filemenu.add_command(label="Save", command=self.nop)
         filemenu.add_separator()
         filemenu.add_command(label="Exit", command=self.quit)
@@ -220,7 +234,7 @@ class FundSender(Tk):
 
         self.config(menu=menubar)
 
-    def _address_UI_init(self):
+    def address_UI_init(self):
         #            0        1
         #    +------------+--------+
         #    | menu                |
@@ -274,18 +288,18 @@ class FundSender(Tk):
         qr_label.grid(row=1, column=0, columnspan=2)
 
         ## ------ cpy ---------
-        Button(qr_frame, text='Copy', width=4, command=self._addr_to_clipboard).grid(row=1, column=2, padx=5)
+        Button(qr_frame, text='Copy', width=4, command=self.address_to_clipboard).grid(row=1, column=2, padx=5)
         qr_frame.grid(row=0, column=1)
 
         # ------ send
         self.needed_style = Style()
         self.needed_style.configure('C.TButton', font = ('Sans', '10', 'bold'))
-        self.cb_send = Button(self, text='SEND', style='C.TButton', command=self._send_funds)
+        self.cb_send = Button(self, text='SEND', style='C.TButton', command=self.send)
         self.cb_send.grid(row=1, column=0, columnspan=2, pady=5)
         self.cb_send.config(state=DISABLED)
 
 
-        self._amt_per_address_changed()
+        self.amt_per_address_changed()
         
         # ------ addresses -------
         fr = Frame(master=self)
@@ -319,7 +333,7 @@ class FundSender(Tk):
         Grid.rowconfigure(self, 4, weight=1)
 
         # Some events after all variables have been initialised
-        self.amt_per_address.trace('w', self._amt_per_address_changed)
+        self.amt_per_address.trace('w', self.amt_per_address_changed)
 
 from time import sleep
 def remote_queries(queries, results):
