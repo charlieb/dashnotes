@@ -38,11 +38,6 @@ def send_funds(from_addr, payables, wif):
     rtx = bc.broadcast_tx(tx)
     return tx
 
-def calc_fee(tx):
-    fee_per_kb = 1000
-    min_fee = 226
-    return max(min_fee, len(tx.as_hex()))
-    
 def getbalance(addr):
     try:
         with url.request.urlopen('https://explorer.dash.org/chain/Dash/q/addressbalance/' + addr) as response:
@@ -197,11 +192,12 @@ class FundSender(Tk):
 
     def recalc_fee(self):
         inputs = 1 # one input
+        min_fee = 226
         # there are self.addresses + 1 outputs in case a change address is
         # needed
-        tx_size = inputs * 180 + (len(self.addresses) + 1) * 32 + 10 + inputs
+        tx_size = inputs * 148 + (len(self.addresses) + 1) * 32 + 10 + inputs
         # fee_per_kb = 1000 # so size is fee: 1duff / byte
-        self.fee = tx_size
+        self.fee = max(min_fee, tx_size)
         print(self.fee)
 
     def send(self):
