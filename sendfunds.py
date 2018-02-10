@@ -204,7 +204,7 @@ class FundSender(Tk):
         if len(self.addresses) == 0: return None
         left = self.balance - strdash2duff(self.amt_per_address.get()) * len(self.addresses) - self.fee 
         addr_amts = [(addr, strdash2duff(self.amt_per_address.get())) for addr in self.addresses]
-        min_change = 100 # Don't bother to send less than this amount to the change address, just add it to the fee
+        min_change = 546 # Don't don't create dust, just add it to the fee
         if left > min_change:
             addr_amts.append((self.address, left))
         txid = send_funds(self.address, addr_amts, self.privkey)
