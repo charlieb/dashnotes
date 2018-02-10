@@ -99,7 +99,7 @@ class FundSender(Tk):
     def __init__(self, balance_queues):
         super().__init__()
         self.title('Send to DashNotes')
-        self.savefilename = 'FundSender.sav'
+        self.savefilename = 'dashnotes.sav'
         try:
             with open(self.savefilename, 'r') as f:
                 self.address, self.privkey = (line.strip() for line in f.readlines())
@@ -122,6 +122,7 @@ class FundSender(Tk):
         self.balance = 0
         self.fee = 0
         self.address_file = ''
+        self.privkey_win = None
         self.option_add("*Listbox.Font", "courier")
         self.menu_init()
         self.address_UI_init()
@@ -196,6 +197,8 @@ class FundSender(Tk):
 
     def recalc_fee(self):
         inputs = 1 # one input
+        # there are self.addresses + 1 outputs in case a change address is
+        # needed
         tx_size = inputs * 180 + (len(self.addresses) + 1) * 32 + 10 + inputs
         # fee_per_kb = 1000 # so size is fee: 1duff / byte
         self.fee = tx_size
@@ -205,7 +208,9 @@ class FundSender(Tk):
         if len(self.addresses) == 0: return None
         left = self.balance - strdash2duff(self.amt_per_address.get()) * len(self.addresses) - self.fee 
         addr_amts = [(addr, strdash2duff(self.amt_per_address.get())) for addr in self.addresses]
-        addr_amts.append((self.address, left if left > 0 else 0))
+        min_change = 100 # Don't bother to send less than this amount to the change address, just add it to the fee
+        if left > min_change:
+            addr_amts.append((self.address, left))
         txid = send_funds(self.address, addr_amts, self.privkey)
         print(txid)
         self.update_balances_now()
@@ -223,22 +228,27 @@ class FundSender(Tk):
 
 
     def show_private_key(self):
-        win = Toplevel()
-        win.title('Private Key')
-        # ====== QR code =======
-        qr_frame = Frame(win)
-        self.qr_image = PIL.ImageTk.PhotoImage(make_qr_im(self.privkey))
-        im_label = Label(qr_frame, compound=BOTTOM, image=self.qr_image)
-        im_label.image = self.qr_image
-        im_label.grid(row=0, column=0, columnspan=3)
+        if self.privkey_win:
+            self.privkey_win.deiconify()
+        else:
+            self.privkey_win = Toplevel()
+            self.privkey_win.title('Private Key')
+            # ====== QR code =======
+            qr_frame = Frame(self.privkey_win)
+            self.qr_image = PIL.ImageTk.PhotoImage(make_qr_im(self.privkey))
+            im_label = Label(qr_frame, compound=BOTTOM, image=self.qr_image)
+            im_label.image = self.qr_image
+            im_label.grid(row=0, column=0, columnspan=3)
 
-        ## ------- addr -------
-        qr_label = Label(qr_frame, text=split_privkey(self.privkey))
-        qr_label.grid(row=1, column=0, columnspan=2)
+            ## ------- addr -------
+            qr_label = Label(qr_frame, text=split_privkey(self.privkey))
+            qr_label.grid(row=1, column=0, columnspan=2)
 
-        ## ------ cpy ---------
-        Button(qr_frame, text='Copy', width=4, command=self.privkey_to_clipboard).grid(row=1, column=2, padx=5)
-        qr_frame.pack(expand=True)
+            ## ------ cpy ---------
+            Button(qr_frame, text='Copy', width=4, command=self.privkey_to_clipboard).grid(row=1, column=2, padx=5)
+            qr_frame.pack(expand=True)
+
+            self.privkey_win.protocol('WM_DELETE_WINDOW', self.privkey_win.withdraw)
 
     def nop(self):
         showwarning('Not implemented', 'Sorry that functionality is not yet implemented')
@@ -248,14 +258,14 @@ class FundSender(Tk):
 
         filemenu = Menu(menubar, tearoff=0)
         filemenu.add_command(label="Open", command=self.open_address_file)
-        filemenu.add_command(label="Save", command=self.nop)
+        #filemenu.add_command(label="Save", command=self.nop)
         filemenu.add_separator()
         filemenu.add_command(label="Exit", command=self.quit)
         menubar.add_cascade(label="File", menu=filemenu)
 
         addressmenu = Menu(menubar, tearoff=0)
         addressmenu.add_command(label="Show Private Key", command=self.show_private_key)
-        addressmenu.add_command(label="Create New", command=self.nop)
+        #addressmenu.add_command(label="Create New", command=self.nop)
         menubar.add_cascade(label="Address", menu=addressmenu)
 
         self.config(menu=menubar)
