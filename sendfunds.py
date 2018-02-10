@@ -98,23 +98,24 @@ class FundSender(Tk):
         try:
             with open(self.savefilename, 'r') as f:
                 self.address, self.privkey = (line.strip() for line in f.readlines())
-        except: #TODO only filenotfound exception
+        except FileNotFoundError:
             self.address, self.privkey = new_keypair()
             try:
                 with open(self.savefilename, 'w') as f:
                     f.write(self.address + '\n' + self.privkey)
-            except:
-                pass # TODO: WARN USER
+            except PermissionError:
+                showwarning('Failed to Save Keys', 
+                        'Failed to save private keys. Please run this program from a writable location.\n\n'
+                        'You can still use this program but any remaining unsent balance will be lost when you close the program.')
+                
 
         #print([self.address, self.privkey])
 
         self.balance_queues = balance_queues
-        #self.addr = 'XqsjzGLmTcXZGH6aMVJ4YToQ8FnzTcEaTk'
-        #self.address = 'XwLpYiL77cPtPfj6t9VLCCgKERSccEoaKS'
 
         self.addresses = []
-        self.balance = 0.000
-        self.fee = 226
+        self.balance = 0
+        self.fee = 0
         self.address_file = ''
         self.option_add("*Listbox.Font", "courier")
         self.menu_init()
