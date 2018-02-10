@@ -90,6 +90,11 @@ def split_addr(addr):
     addr = addr[0:20] + '\n' + addr[21:]
     return addr
 
+def split_privkey(addr):
+    addr = ' '.join(addr[i:i+4] for i in range(0, len(addr), 4))
+    addr = addr[0:34] + '\n' + addr[35:]
+    return addr
+
 class FundSender(Tk):
     def __init__(self, balance_queues):
         super().__init__()
@@ -106,9 +111,9 @@ class FundSender(Tk):
             except PermissionError:
                 showwarning('Failed to Save Keys', 
                         'Failed to save private keys. Please run this program from a writable location.\n\n'
-                        'You can still use this program but any remaining unsent balance will be lost when you close the program.')
+                        'You can still use this program but please use "Show Private Key" to reclaim any unsent Dash balance.\n\n'
+                        'Any remaining unsent balance will be lost when you close the program.')
                 
-
         #print([self.address, self.privkey])
 
         self.balance_queues = balance_queues
@@ -165,6 +170,8 @@ class FundSender(Tk):
 
     def address_to_clipboard(self):
         clipboard.copy(self.address)
+    def privkey_to_clipboard(self):
+        clipboard.copy(self.privkey)
 
     def open_address_file(self):
         address_file = askopenfilename(initialdir='.',
@@ -215,6 +222,24 @@ class FundSender(Tk):
         self.cb_send.config(state=DISABLED if need > 0 else NORMAL)
 
 
+    def show_private_key(self):
+        win = Toplevel()
+        win.title('Private Key')
+        # ====== QR code =======
+        qr_frame = Frame(win)
+        self.qr_image = PIL.ImageTk.PhotoImage(make_qr_im(self.privkey))
+        im_label = Label(qr_frame, compound=BOTTOM, image=self.qr_image)
+        im_label.image = self.qr_image
+        im_label.grid(row=0, column=0, columnspan=3)
+
+        ## ------- addr -------
+        qr_label = Label(qr_frame, text=split_privkey(self.privkey))
+        qr_label.grid(row=1, column=0, columnspan=2)
+
+        ## ------ cpy ---------
+        Button(qr_frame, text='Copy', width=4, command=self.privkey_to_clipboard).grid(row=1, column=2, padx=5)
+        qr_frame.pack(expand=True)
+
     def nop(self):
         showwarning('Not implemented', 'Sorry that functionality is not yet implemented')
 
@@ -229,7 +254,7 @@ class FundSender(Tk):
         menubar.add_cascade(label="File", menu=filemenu)
 
         addressmenu = Menu(menubar, tearoff=0)
-        addressmenu.add_command(label="Show Private Key", command=self.nop)
+        addressmenu.add_command(label="Show Private Key", command=self.show_private_key)
         addressmenu.add_command(label="Create New", command=self.nop)
         menubar.add_cascade(label="Address", menu=addressmenu)
 
