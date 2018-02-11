@@ -41,7 +41,8 @@ def send_funds(from_addr, payables, wif):
     '''from_addr is a simple address in a string.
     payables is a list of tuples of (address, amount in duffs)
     wif is the wallet import format version of the private key for from_addr'''
-    spendables = get_spendables(from_addr)
+    bc = blockcypher.BlockcypherProvider(netcode='DASH', api_key=blockcypher_api_key)
+    spendables = bc.spendables_for_address(from_addr)
     tx = tx_utils.create_tx(spendables, payables, fee=0)
     tx_utils.sign_tx(tx, [wif])
     rtx = bc.broadcast_tx(tx)
