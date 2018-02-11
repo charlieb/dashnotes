@@ -23,16 +23,25 @@ def strdash2duff(s):
     return duffs
 
 blockcypher_api_key = 'ee938bfdf0e949c3888b63940969e35c'
+def get_spendables(address):
+    # Note: Requires https://github.com/charlieb/pycoin version until 
+    # https://github.com/richardkiss/pycoin/pull/265 is merged
+    bc = blockcypher.BlockcypherProvider(netcode='DASH', api_key=blockcypher_api_key)
+
+    try:
+        spendables = bc.spendables_for_address(address)
+    except url.error.HTTPError as e:
+        if e.code == 404:
+            return []
+    
+    return spendables
+
+
 def send_funds(from_addr, payables, wif):
     '''from_addr is a simple address in a string.
     payables is a list of tuples of (address, amount in duffs)
     wif is the wallet import format version of the private key for from_addr'''
 
-    # Note: Requires https://github.com/charlieb/pycoin version until 
-    # https://github.com/richardkiss/pycoin/pull/265 is merged
-    bc = blockcypher.BlockcypherProvider(netcode='DASH', api_key=blockcypher_api_key)
-
-    spendables = bc.spendables_for_address(from_addr)
     tx = tx_utils.create_tx(spendables, payables, fee=0)
     tx_utils.sign_tx(tx, [wif])
     rtx = bc.broadcast_tx(tx)
@@ -193,9 +202,9 @@ class FundSender(Tk):
     def recalc_fee(self):
         inputs = 1 # one input
         min_fee = 226
-        # there are self.addresses + 1 outputs in case a change address is
-        # needed
-        tx_size = inputs * 148 + (len(self.addresses) + 1) * 32 + 10 + inputs
+        # Get the number of utxos at the address
+        spendables = get_spendables(self.address)
+        tx_size = len(spendables) * 148 + (len(self.addresses) + 1) * 32 + 10 + len(spendables)
         # fee_per_kb = 1000 # so size is fee: 1duff / byte
         self.fee = max(min_fee, tx_size)
         print(self.fee)
