@@ -41,7 +41,7 @@ def send_funds(from_addr, payables, wif):
     '''from_addr is a simple address in a string.
     payables is a list of tuples of (address, amount in duffs)
     wif is the wallet import format version of the private key for from_addr'''
-
+    spendables = get_spendables(from_addr)
     tx = tx_utils.create_tx(spendables, payables, fee=0)
     tx_utils.sign_tx(tx, [wif])
     rtx = bc.broadcast_tx(tx)
@@ -125,12 +125,14 @@ class FundSender(Tk):
         self.addresses = []
         self.balance = 0
         self.fee = 0
+        self.needed = 0
+        self.nutxos = 0 # number of inputs to the tx
         self.address_file = ''
         self.privkey_win = None
         self.option_add("*Listbox.Font", "courier")
         self.menu_init()
         self.address_UI_init()
-        self.amt_per_address_changed()
+        self.update_UI_balances()
         self.update_balances_completed = True
         self.update_balances_loop()
         self.receive_balances_loop()
@@ -141,8 +143,9 @@ class FundSender(Tk):
             bal = q.get()
             if bal is not None:
                 if bal['address'] == self.address:
-                    self.balance = bal['balance']
-                    self.amt_per_address_changed()
+                    if self.balance != bal['balance']:
+                        self.balance = bal['balance']
+                        self.balance_changed()
                 elif bal['address'] in self.addresses:
                     self.tv_addresses.item(bal['address'], values=["%0.8f"%duff2dash(bal['balance'])])
                 q.task_done()
@@ -200,37 +203,58 @@ class FundSender(Tk):
         self.update_balances_now()
 
     def recalc_fee(self):
-        inputs = 1 # one input
+        if len(self.addresses) == 0:
+            self.fee = 0
+            return
+
         min_fee = 226
-        # Get the number of utxos at the address
-        spendables = get_spendables(self.address)
-        tx_size = len(spendables) * 148 + (len(self.addresses) + 1) * 32 + 10 + len(spendables)
+        # Get the number of utxos at the address, if we don't have enough
+        # assume one extra transaction
+        inputs = self.nutxos + (1 if self.needed > 0 else 0)
+        tx_size = inputs * 148 + (len(self.addresses) + 1) * 32 + 10 + inputs
         # fee_per_kb = 1000 # so size is fee: 1duff / byte
         self.fee = max(min_fee, tx_size)
         print(self.fee)
 
     def send(self):
         if len(self.addresses) == 0: return None
-        left = self.balance - strdash2duff(self.amt_per_address.get()) * len(self.addresses) - self.fee 
+        left = self.balance >= self.needed
         addr_amts = [(addr, strdash2duff(self.amt_per_address.get())) for addr in self.addresses]
         min_change = 546 # Don't don't create dust, just add it to the fee
         if left > min_change:
             addr_amts.append((self.address, left))
+        else:
+            self.fee += left
         txid = send_funds(self.address, addr_amts, self.privkey)
         print(txid)
         self.update_balances_now()
 
-    def amt_per_address_changed(self, *_):
+    def recalc_needed(self, *_):
+        print('recalc')
+        sign = lambda x: 1 if x > 0 else -1
+        self.recalc_fee()
         total = strdash2duff(self.amt_per_address.get()) * len(self.addresses) + self.fee
+        needed = total - self.balance
+        if needed < 0: needed = 0
+        if sign(needed) != sign(self.needed): # whether another send will be needed changed.
+            self.needed = needed
+            self.recalc_needed()
+        else:
+            self.needed = needed
 
-        need = total - self.balance
-        if need < 0: need = 0
+        self.update_UI_balances()
 
+    def balance_changed(self):
+        self.nutxos = len(get_spendables(self.address))
+        self.recalc_needed()
+
+        self.update_UI_balances()
+
+    def update_UI_balances(self):
         self.lb_balance.set('    %0.8f Dash'%duff2dash(self.balance))
-        self.lb_needed.set( '    %0.8f Dash'%duff2dash(need))
-        self.needed_style.configure('BW.TLabel', foreground='red' if need > 0 else 'green')
-        self.cb_send.config(state=DISABLED if need > 0 else NORMAL)
-
+        self.lb_needed.set( '    %0.8f Dash'%duff2dash(self.needed))
+        self.needed_style.configure('BW.TLabel', foreground='red' if self.needed > 0 else 'green')
+        self.cb_send.config(state=DISABLED if self.needed > 0 else NORMAL)
 
     def show_private_key(self):
         if self.privkey_win:
@@ -339,9 +363,6 @@ class FundSender(Tk):
         self.cb_send.grid(row=1, column=0, columnspan=2, pady=5)
         self.cb_send.config(state=DISABLED)
 
-
-        self.amt_per_address_changed()
-        
         # ------ addresses -------
         fr = Frame(master=self)
         fr.grid(sticky=N+E+S+W, row=2, column=0, columnspan=2)
@@ -374,7 +395,7 @@ class FundSender(Tk):
         Grid.rowconfigure(self, 4, weight=1)
 
         # Some events after all variables have been initialised
-        self.amt_per_address.trace('w', self.amt_per_address_changed)
+        self.amt_per_address.trace('w', self.recalc_needed)
 
 from time import sleep
 def remote_queries(queries, results):
