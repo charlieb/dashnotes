@@ -21,7 +21,7 @@ Download and upzip the package for your platform
 - Add the location where you downloaded https://github.com/charlieb/pycoin to
   your PYTHONPATH
 
-#### Genkeypairs
+#### Genkeypairs (Wallet generator, not needed for sending Dash to addresses)
 - python3
 - pip install pillow pycoin qrcode
 - pacman -S rng-tools
