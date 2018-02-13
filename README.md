@@ -42,7 +42,8 @@ Sending Dash to Address List
 - Hit send.
 - Wait until the address list shows the new balances.
 ### Detailed Instructions
-<img align="right" src="https://i.imgur.com/kI4Z8aT.png">
+![Main UI](https://i.imgur.com/kI4Z8aT.png)
+
 - Start the program
   - On Windows dashnotes/sendfunds.exe
   - On Linux dashnotes/sendfunds
