@@ -32,6 +32,7 @@ Download and upzip the package for your platform
 
 Sending Dash to Address List
 ============================
+![Main UI](https://i.imgur.com/kI4Z8aT.png)
 ### Quick Overview
 - Launch the program.
 - Open the address list file.
@@ -41,9 +42,7 @@ Sending Dash to Address List
   shows the balance.
 - Hit send.
 - Wait until the address list shows the new balances.
-### Detailed Instructions
-![Main UI](https://i.imgur.com/kI4Z8aT.png)
-
+## Detailed Instructions
 - Start the program
   - On Windows dashnotes/sendfunds.exe
   - On Linux dashnotes/sendfunds
@@ -71,5 +70,29 @@ Sending Dash to Address List
     transaction is confirmed all the addresses will update to show the new
     balance.
 
+Further Information
+===================
+### Reclaiming Unused Dash
+If you send too much Dash to the program you can easily reclaim it.
+- Select Address -> Show Private Key from the main menu.
+- A window will open with the private key in "Wallet Import Format" (WIP).
+- The private key can be readily imported into most Dash or multicoin wallets.
+### Failed to Save Private Keys Message
+When the program starts up it generates a new key and its address. It attempts
+to save both to the location it is started from. If it fails to save the file
+it will warn the user.
 
+**If you send Dash to the program after seeing this message and then close the
+program your Dash will be lost!**
+
+Please move the program to a location on the disk where it can create files.
+
+It is not recommended but the program can still be used. The program must be
+used in a single session because once it is closed the private key generated 
+at startup will be lost.
+
+If you have to run the program after seeing this message it it recommended that you make a manual
+copy of the private key by selecting Address -> Show Private Key from the main
+menu and either capturing the QR code or using the copy button. This will allow
+you to recover your funds in the event that the program closes.
 

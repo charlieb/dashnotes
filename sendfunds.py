@@ -116,8 +116,10 @@ class FundSender(Tk):
             except PermissionError:
                 showwarning('Failed to Save Keys', 
                         'Failed to save private keys. Please run this program from a writable location.\n\n'
+                        'It is not recommended to use the program in this state.\n\n'
                         'You can still use this program but please use "Show Private Key" to reclaim any unsent Dash balance.\n\n'
-                        'Any remaining unsent balance will be lost when you close the program.')
+                        'Any remaining unsent balance will be lost when you close the program.\n\n'
+                        'YOU WILL LOSE ANY DASH SENT TO THIS APPLICATION WHEN THE PROGRAM CLOSES\n\n')
                 
         #print([self.address, self.privkey])
 
