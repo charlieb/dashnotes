@@ -3,9 +3,9 @@ Installation
 
 ## Easy Bundles
 Download and upzip the package for your platform
-- [Windows](http://google.com)
-- [Linux](http://google.com)
-- [MacOS](http://google.com)
+- [Windows (coming soon)](http://google.com)
+- [Linux](https://www.dropbox.com/s/qcf2evlh7ro8htv/dashnotes-linux.tar.gz?dl=0)
+- [MacOS (coming soon)](http://google.com)
 
 
 ## Install from Source
