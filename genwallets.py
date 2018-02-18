@@ -43,7 +43,7 @@ def test_keypair():
 
 dpi=300
 page_size = [18*dpi, 12*dpi] # = 5400 x 3600 landscape
-overprint = dpi / 16 # halfway between 1/8 and 1/16inch
+overprint = 0.19685 * dpi # 5mm
 
 
 # >>> w = 457.2 # 18 inches in mm
@@ -109,7 +109,7 @@ def parse_args():
     ap.add_argument('-f', '--filename', default='wallet', help='Filename prefix for PDF and PNG files. Actual filenames will be like <filename>000001.png')
     ap.add_argument('-d', '--directory', default='/run/media/charlieb/PRIVATE', help='Directory to write the images to - must be the root of a filesystem named PRIVATE')
     ap.add_argument('--unsafe', action='store_true', help='Override the above directory checks')
-    ap.add_argument('-s', '--style', help='The graphics to use for the wallet.', choices=['morton_mid', 'test'], required=True)
+    ap.add_argument('-s', '--style', help='The graphics to use for the wallet.', choices=['jw_note', 'jw_palimsest', 'jw_splatter', 'jw_flower','morton_mid', 'test'], required=True)
     ap.add_argument('-q', '--quiet', action='store_true', default=False, help='Supress status messages, useful for getting just wallet addresses on stdout.')
     ap.add_argument('number', type=int, help='The number of wallets to generate.')
     return ap.parse_args()
@@ -124,7 +124,6 @@ def main():
         else:
             return
 
-    sheet = Image.new('RGB', page_size, (255,255,255))
 
     with open('config.json') as f:
         cfg = json.loads(f.read())
@@ -141,7 +140,12 @@ def main():
         if not args.quiet:
             print('Generating %i sheets of %s. Saving addresses to %s and PDFs as %s'%(nsheets, args.style, args.output if args.output else 'stdout', args.filename))
 
+        sheets = []
         for s in range(nsheets):
+
+	    # Sheet for front
+            sheet = Image.new('RGB', page_size, (255,255,255))
+
             for coord in coords:
                 pub, priv = keypair()
                 print(pub, file=addrfile)
@@ -152,15 +156,21 @@ def main():
                 sheet.paste(front, coord)
             crop_marks(front, sheet)
 
-            sheet.save('%s%05i.png'%(wallet_path, s*2), 'PNG')
-            sheet.save('%s%05i.pdf'%(wallet_path, s*2), 'PDF', resolution=dpi)
+            sheets.append(sheet)
+            #sheet.save('%s%05i.png'%(wallet_path, s*2), 'PNG')
+            #sheet.save('%s%05i.pdf'%(wallet_path, s*2), 'PDF', resolution=dpi)
 
+            # sheet for back
+            sheet = Image.new('RGB', page_size, (255,255,255))
             for coord in coords:
                 sheet.paste(back, coord)
             crop_marks(back, sheet)
 
-            sheet.save('%s%05i.png'%(wallet_path, s*2+1), 'PNG')
-            sheet.save('%s%05i.pdf'%(wallet_path, s*2+1), 'PDF', resolution=dpi)
+            sheets.append(sheet)
+            #sheet.save('%s%05i.png'%(wallet_path, s*2+1), 'PNG')
+            #sheet.save('%s%05i.pdf'%(wallet_path, s*2+1), 'PDF', resolution=dpi)
+
+        sheets[0].save(wallet_path + '.pdf', 'PDF', save_all=True, append_images=sheets[1:])
     
 
 if __name__ == '__main__':
