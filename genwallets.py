@@ -170,8 +170,12 @@ def main():
             #sheet.save('%s%05i.png'%(wallet_path, s*2+1), 'PNG')
             #sheet.save('%s%05i.pdf'%(wallet_path, s*2+1), 'PDF', resolution=dpi)
 
-        sheets[0].save(wallet_path + '.pdf', 'PDF', save_all=True, append_images=sheets[1:])
+            if s % 5 == 0 and s != 0:
+                sheets[0].save('%s%05i.pdf'%(wallet_path, s), 'PDF', save_all=True, append_images=sheets[1:])
+                sheets = []
     
+        if len(sheets) > 0:
+            sheets[0].save('%s%05i.pdf'%(wallet_path, nsheets), 'PDF', save_all=True, append_images=sheets[1:])
 
 if __name__ == '__main__':
     main()
